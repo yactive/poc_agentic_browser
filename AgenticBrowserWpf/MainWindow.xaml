@@ -1,0 +1,622 @@
+<Window x:Class="AgenticBrowserWpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ActiveLens - AI Browser Automation"
+        Width="1440" Height="920" MinWidth="1100" MinHeight="700"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgDarkBrush}">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="260"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ===== LEFT SIDEBAR ===== -->
+        <Border Grid.Column="0" Background="{StaticResource BgPanelBrush}"
+                BorderBrush="{StaticResource BorderDimBrush}" BorderThickness="0,0,1,0">
+            <DockPanel>
+                <!-- Logo + Gear -->
+                <Border DockPanel.Dock="Top" Padding="16,14,12,10">
+                    <DockPanel>
+                        <!-- Brand name with gradient -->
+                        <TextBlock DockPanel.Dock="Left" FontSize="20" FontWeight="Bold"
+                                   FontFamily="Montserrat, Segoe UI" VerticalAlignment="Center">
+                            <TextBlock.Foreground>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#00CFFF" Offset="0"/>
+                                    <GradientStop Color="#8B5CF6" Offset="0.55"/>
+                                    <GradientStop Color="#E91EAA" Offset="1"/>
+                                </LinearGradientBrush>
+                            </TextBlock.Foreground>
+                            activelens
+                        </TextBlock>
+                        <Button DockPanel.Dock="Right" Content="&#x2699;" Style="{StaticResource IconButton}"
+                                ToolTip="Settings" Click="ToggleSettings_Click"
+                                HorizontalAlignment="Right"/>
+                    </DockPanel>
+                </Border>
+
+                <!-- Gradient accent line -->
+                <Border DockPanel.Dock="Top" Height="2" Margin="16,0">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#00CFFF" Offset="0"/>
+                            <GradientStop Color="#8B5CF6" Offset="0.5"/>
+                            <GradientStop Color="#E91EAA" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+
+                <!-- Status bar at bottom -->
+                <Border DockPanel.Dock="Bottom" Padding="12,8" Background="#0A0A18">
+                    <TextBlock Text="Chrome: Connected (port 9238)" FontSize="11"
+                               Foreground="{StaticResource TextMutedBrush}"/>
+                </Border>
+
+                <!-- Sidebar content -->
+                <Grid Margin="0,8,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- ACTIVE TASKS header -->
+                    <DockPanel Grid.Row="0" Margin="16,6,12,4">
+                        <TextBlock Text="ACTIVE TASKS" FontSize="10" FontWeight="Bold"
+                                   Foreground="{StaticResource TextMutedBrush}" LetterSpacing="1.5"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock DockPanel.Dock="Right" Text="3" FontSize="10"
+                                   Foreground="{StaticResource AccentCyanBrush}" HorizontalAlignment="Right"
+                                   VerticalAlignment="Center"/>
+                    </DockPanel>
+
+                    <!-- Task list -->
+                    <ListBox Grid.Row="1" Background="Transparent" BorderThickness="0"
+                             Margin="8,0" SelectedIndex="0">
+                        <ListBox.Resources>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="10,10"/>
+                                <Setter Property="Margin" Value="0,2"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="border" CornerRadius="8" Padding="{TemplateBinding Padding}"
+                                                    Background="Transparent" BorderThickness="1" BorderBrush="Transparent">
+                                                <ContentPresenter/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="border" Property="Background" Value="#1E1E3A"/>
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="border" Property="Background" Value="#1E1E3A"/>
+                                                    <Setter TargetName="border" Property="BorderBrush" Value="#3A3A60"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.Resources>
+
+                        <!-- Task 1: Running -->
+                        <ListBoxItem>
+                            <StackPanel>
+                                <DockPanel>
+                                    <Ellipse Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center">
+                                        <Ellipse.Fill>
+                                            <SolidColorBrush Color="{StaticResource AccentCyan}"/>
+                                        </Ellipse.Fill>
+                                    </Ellipse>
+                                    <TextBlock Text="Step 4/25" DockPanel.Dock="Right" FontSize="10"
+                                               Foreground="{StaticResource AccentCyanBrush}" HorizontalAlignment="Right"/>
+                                    <TextBlock Text="Find candidate +1-917..." FontSize="12"
+                                               Foreground="{StaticResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis"/>
+                                </DockPanel>
+                                <TextBlock Text="recruit.zoho.com" FontSize="10" Margin="16,3,0,0"
+                                           Foreground="{StaticResource TextMutedBrush}"/>
+                            </StackPanel>
+                        </ListBoxItem>
+
+                        <!-- Task 2: Done -->
+                        <ListBoxItem>
+                            <StackPanel>
+                                <DockPanel>
+                                    <Ellipse Width="8" Height="8" Fill="{StaticResource SuccessGreenBrush}"
+                                             Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Done" DockPanel.Dock="Right" FontSize="10"
+                                               Foreground="{StaticResource SuccessGreenBrush}" HorizontalAlignment="Right"/>
+                                    <TextBlock Text="Send email to john@..." FontSize="12"
+                                               Foreground="{StaticResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis"/>
+                                </DockPanel>
+                                <TextBlock Text="mail.google.com" FontSize="10" Margin="16,3,0,0"
+                                           Foreground="{StaticResource TextMutedBrush}"/>
+                            </StackPanel>
+                        </ListBoxItem>
+
+                        <!-- Task 3: Queued -->
+                        <ListBoxItem>
+                            <StackPanel>
+                                <DockPanel>
+                                    <Ellipse Width="8" Height="8" Fill="{StaticResource TextMutedBrush}"
+                                             Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Queued" DockPanel.Dock="Right" FontSize="10"
+                                               Foreground="{StaticResource TextMutedBrush}" HorizontalAlignment="Right"/>
+                                    <TextBlock Text="Create Freshdesk ticket" FontSize="12"
+                                               Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+                                </DockPanel>
+                                <TextBlock Text="freshdesk.com" FontSize="10" Margin="16,3,0,0"
+                                           Foreground="{StaticResource TextMutedBrush}"/>
+                            </StackPanel>
+                        </ListBoxItem>
+                    </ListBox>
+
+                    <!-- Add Task button -->
+                    <Button Grid.Row="2" Content="+ Add Task" Style="{StaticResource AccentButton}"
+                            Margin="12,8" Height="38"/>
+
+                    <!-- HISTORY header -->
+                    <DockPanel Grid.Row="3" Margin="16,12,12,4">
+                        <TextBlock Text="HISTORY" FontSize="10" FontWeight="Bold"
+                                   Foreground="{StaticResource TextMutedBrush}" LetterSpacing="1.5"/>
+                    </DockPanel>
+
+                    <!-- History list -->
+                    <ListBox Grid.Row="4" Background="Transparent" BorderThickness="0" Margin="8,0,8,8">
+                        <ListBox.Resources>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="10,8"/>
+                                <Setter Property="Margin" Value="0,1"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="border" CornerRadius="6" Padding="{TemplateBinding Padding}"
+                                                    Background="Transparent">
+                                                <ContentPresenter/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="border" Property="Background" Value="#1A1A30"/>
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="border" Property="Background" Value="#1E1E3A"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.Resources>
+
+                        <ListBoxItem>
+                            <DockPanel>
+                                <TextBlock Text="&#x2714;" Foreground="{StaticResource SuccessGreenBrush}"
+                                           FontSize="11" Width="20" VerticalAlignment="Center"/>
+                                <StackPanel>
+                                    <TextBlock Text="Find candidate..." FontSize="11.5"
+                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="Today 14:30  ·  5 steps" FontSize="9.5"
+                                               Foreground="{StaticResource TextMutedBrush}"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </ListBoxItem>
+                        <ListBoxItem>
+                            <DockPanel>
+                                <TextBlock Text="&#x2714;" Foreground="{StaticResource SuccessGreenBrush}"
+                                           FontSize="11" Width="20" VerticalAlignment="Center"/>
+                                <StackPanel>
+                                    <TextBlock Text="Add note to application" FontSize="11.5"
+                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="Today 14:16  ·  8 steps" FontSize="9.5"
+                                               Foreground="{StaticResource TextMutedBrush}"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </ListBoxItem>
+                        <ListBoxItem>
+                            <DockPanel>
+                                <TextBlock Text="&#x2718;" Foreground="{StaticResource ErrorRedBrush}"
+                                           FontSize="11" Width="20" VerticalAlignment="Center"/>
+                                <StackPanel>
+                                    <TextBlock Text="Search Zoho candidate" FontSize="11.5"
+                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="Today 13:45  ·  12 steps  ·  Failed" FontSize="9.5"
+                                               Foreground="{StaticResource ErrorRedBrush}"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </ListBoxItem>
+                        <ListBoxItem>
+                            <DockPanel>
+                                <TextBlock Text="&#x2714;" Foreground="{StaticResource SuccessGreenBrush}"
+                                           FontSize="11" Width="20" VerticalAlignment="Center"/>
+                                <StackPanel>
+                                    <TextBlock Text="Gmail compose email" FontSize="11.5"
+                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="Yesterday 16:20  ·  6 steps" FontSize="9.5"
+                                               Foreground="{StaticResource TextMutedBrush}"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </ListBoxItem>
+                        <ListBoxItem>
+                            <DockPanel>
+                                <TextBlock Text="&#x2714;" Foreground="{StaticResource SuccessGreenBrush}"
+                                           FontSize="11" Width="20" VerticalAlignment="Center"/>
+                                <StackPanel>
+                                    <TextBlock Text="Freshdesk ticket" FontSize="11.5"
+                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="Yesterday 15:10  ·  24 steps" FontSize="9.5"
+                                               Foreground="{StaticResource TextMutedBrush}"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </ListBoxItem>
+                        <ListBoxItem>
+                            <DockPanel>
+                                <TextBlock Text="&#x2718;" Foreground="{StaticResource ErrorRedBrush}"
+                                           FontSize="11" Width="20" VerticalAlignment="Center"/>
+                                <StackPanel>
+                                    <TextBlock Text="Monday board status" FontSize="11.5"
+                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="Yesterday 11:30  ·  35 steps  ·  Failed" FontSize="9.5"
+                                               Foreground="{StaticResource ErrorRedBrush}"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </ListBoxItem>
+                    </ListBox>
+                </Grid>
+            </DockPanel>
+        </Border>
+
+        <!-- ===== RIGHT DETAIL PANEL ===== -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="200"/>
+            </Grid.RowDefinitions>
+
+            <!-- Settings popup (hidden by default) -->
+            <Border x:Name="settingsPanel" Grid.Row="0" Background="{StaticResource BgPanelBrush}"
+                    BorderBrush="{StaticResource BorderDimBrush}" BorderThickness="0,0,0,1"
+                    Padding="20,14" Visibility="Collapsed">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="100"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="80"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="80"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Row 0 -->
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Claude Key" FontSize="11"
+                               Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,10,8"/>
+                    <Border Grid.Row="0" Grid.Column="1" CornerRadius="4" Background="{StaticResource BgInputBrush}"
+                            BorderBrush="{StaticResource BorderDimBrush}" BorderThickness="1" Margin="0,0,16,8" Padding="8,5">
+                        <TextBlock Text="sk-ant-api03-••••••••••••••••" FontSize="11" FontFamily="Cascadia Code, Consolas"
+                                   Foreground="{StaticResource TextMutedBrush}"/>
+                    </Border>
+
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Model" FontSize="11"
+                               Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,10,8"/>
+                    <Border Grid.Row="0" Grid.Column="3" CornerRadius="4" Background="{StaticResource BgInputBrush}"
+                            BorderBrush="{StaticResource BorderDimBrush}" BorderThickness="1" Margin="0,0,16,8" Padding="8,5">
+                        <TextBlock Text="claude-sonnet-4-6" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}"/>
+                    </Border>
+
+                    <TextBlock Grid.Row="0" Grid.Column="4" Text="Port" FontSize="11"
+                               Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,10,8"/>
+                    <Border Grid.Row="0" Grid.Column="5" CornerRadius="4" Background="{StaticResource BgInputBrush}"
+                            BorderBrush="{StaticResource BorderDimBrush}" BorderThickness="1" Margin="0,0,16,8" Padding="8,5">
+                        <TextBlock Text="9238" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}"/>
+                    </Border>
+
+                    <TextBlock Grid.Row="0" Grid.Column="6" Text="Steps" FontSize="11"
+                               Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,10,8"/>
+                    <Border Grid.Row="0" Grid.Column="7" CornerRadius="4" Background="{StaticResource BgInputBrush}"
+                            BorderBrush="{StaticResource BorderDimBrush}" BorderThickness="1" Margin="0,0,16,8" Padding="8,5">
+                        <TextBlock Text="25" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}"/>
+                    </Border>
+
+                    <TextBlock Grid.Row="0" Grid.Column="8" Text="Mode" FontSize="11"
+                               Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,10,8"/>
+                    <Border Grid.Row="0" Grid.Column="9" CornerRadius="4" Background="{StaticResource BgInputBrush}"
+                            BorderBrush="{StaticResource BorderDimBrush}" BorderThickness="1" Margin="0,0,0,8" Padding="8,5">
+                        <TextBlock Text="Hybrid" FontSize="11" Foreground="{StaticResource AccentCyanBrush}"/>
+                    </Border>
+
+                    <!-- Row 1 -->
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Gemini Key" FontSize="11"
+                               Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <Border Grid.Row="1" Grid.Column="1" CornerRadius="4" Background="{StaticResource BgInputBrush}"
+                            BorderBrush="{StaticResource BorderDimBrush}" BorderThickness="1" Margin="0,0,16,0" Padding="8,5">
+                        <TextBlock Text="AIza••••••••••••••" FontSize="11" FontFamily="Cascadia Code, Consolas"
+                                   Foreground="{StaticResource TextMutedBrush}"/>
+                    </Border>
+
+                    <Button Grid.Row="1" Grid.Column="2" Content="Launch Chrome" Style="{StaticResource GhostButton}"
+                            Grid.ColumnSpan="2" HorizontalAlignment="Left" Margin="0,0,0,0"/>
+                </Grid>
+            </Border>
+
+            <!-- Task header -->
+            <Border Grid.Row="1" Padding="20,12,20,10" Background="{StaticResource BgDarkBrush}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0">
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                            <!-- Running indicator -->
+                            <Border CornerRadius="10" Padding="10,4" Margin="0,0,10,0">
+                                <Border.Background>
+                                    <SolidColorBrush Color="{StaticResource AccentCyan}" Opacity="0.15"/>
+                                </Border.Background>
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="6" Height="6" Fill="{StaticResource AccentCyanBrush}" Margin="0,0,6,0"/>
+                                    <TextBlock Text="Running" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{StaticResource AccentCyanBrush}"/>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock Text="Step 4 of 25" FontSize="11"
+                                       Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                        </StackPanel>
+
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="Stop" Style="{StaticResource DangerButton}" Margin="0,0,8,0"/>
+                            <Button Content="Re-run" Style="{StaticResource GhostButton}"/>
+                        </StackPanel>
+                    </DockPanel>
+
+                    <!-- Task text -->
+                    <Border Grid.Row="1" CornerRadius="8" Margin="0,10,0,0" Padding="14,10"
+                            Background="{StaticResource BgCardBrush}" BorderBrush="{StaticResource BorderDimBrush}"
+                            BorderThickness="1">
+                        <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"
+                                   LineHeight="18">
+                            open https://recruit.zoho.com/ login with: ralph@ramrecruiting.com
+                            <LineBreak/>find application of candidate with phone: +1 (917) 881-8334, add a note with call summary:
+                            <LineBreak/>Interview with Christopher SS Queens for Social Worker Position...
+                        </TextBlock>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- Main content: Screenshot + Step log -->
+            <Grid Grid.Row="2" Margin="20,8,20,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="340"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Screenshot -->
+                <Border Grid.Column="0" CornerRadius="10" Margin="0,0,12,0"
+                        Background="{StaticResource BgCardBrush}" BorderBrush="{StaticResource BorderDimBrush}"
+                        BorderThickness="1" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <DockPanel Grid.Row="0" Margin="14,10,14,6">
+                            <TextBlock Text="Live Screenshot" FontSize="11" FontWeight="Bold"
+                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                            <TextBlock DockPanel.Dock="Right" Text="22 KB" FontSize="10"
+                                       Foreground="{StaticResource TextMutedBrush}" HorizontalAlignment="Right"/>
+                        </DockPanel>
+
+                        <!-- Mock screenshot area -->
+                        <Border Grid.Row="1" Margin="8,0,8,8" CornerRadius="6"
+                                Background="#F5F5F5" ClipToBounds="True">
+                            <Canvas>
+                                <!-- Mock browser content -->
+                                <Rectangle Canvas.Left="0" Canvas.Top="0" Width="2000" Height="36"
+                                           Fill="#E8E8E8"/>
+                                <TextBlock Canvas.Left="14" Canvas.Top="9" Text="recruit.zoho.com/recruit/org894803276/Candidates"
+                                           FontSize="10" Foreground="#888"/>
+                                <TextBlock Canvas.Left="20" Canvas.Top="52" Text="Zoho Recruit"
+                                           FontSize="18" FontWeight="Bold" Foreground="#333"/>
+                                <TextBlock Canvas.Left="20" Canvas.Top="82" Text="Christopher Hong"
+                                           FontSize="14" Foreground="#1976D2" FontWeight="SemiBold"/>
+                                <TextBlock Canvas.Left="20" Canvas.Top="104" Text="+1 (917) 881-8334  |  Director of Social Services"
+                                           FontSize="11" Foreground="#888"/>
+                                <Rectangle Canvas.Left="20" Canvas.Top="134" Width="110" Height="30"
+                                           RadiusX="4" RadiusY="4" Fill="#0078D4"/>
+                                <TextBlock Canvas.Left="35" Canvas.Top="139" Text="Add Note"
+                                           FontSize="12" FontWeight="Bold" Foreground="White"/>
+                                <!-- Red highlight box -->
+                                <Rectangle Canvas.Left="16" Canvas.Top="130" Width="118" Height="38"
+                                           Stroke="#FF4444" StrokeThickness="2.5" RadiusX="6" RadiusY="6"
+                                           Fill="Transparent" StrokeDashArray="4,2"/>
+                            </Canvas>
+                        </Border>
+
+                        <!-- Screenshot navigation (for history) -->
+                        <Border Grid.Row="2" Padding="12,6" Background="#12122A">
+                            <DockPanel>
+                                <Button DockPanel.Dock="Left" Content="&#x25C0;" Style="{StaticResource IconButton}"
+                                        Width="28" Height="28" FontSize="12"/>
+                                <Button DockPanel.Dock="Right" Content="&#x25B6;" Style="{StaticResource IconButton}"
+                                        Width="28" Height="28" FontSize="12"/>
+                                <TextBlock Text="Screenshot 4 of 4" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" FontSize="11"
+                                           Foreground="{StaticResource TextMutedBrush}"/>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- Step-by-step log -->
+                <Border Grid.Column="1" CornerRadius="10"
+                        Background="{StaticResource BgCardBrush}" BorderBrush="{StaticResource BorderDimBrush}"
+                        BorderThickness="1">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Text="Step-by-Step" FontSize="11" FontWeight="Bold"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="14,10,14,6"/>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="4,0,4,4">
+                            <StackPanel Margin="10,0">
+                                <!-- Step 1 -->
+                                <Border CornerRadius="6" Padding="10,8" Margin="0,2" Background="#14142A">
+                                    <StackPanel>
+                                        <DockPanel>
+                                            <TextBlock Text="&#x2714;" Foreground="{StaticResource SuccessGreenBrush}"
+                                                       FontSize="12" Margin="0,0,8,0"/>
+                                            <TextBlock Text="Step 1" FontWeight="Bold" FontSize="11"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"/>
+                                            <TextBlock Text="navigate" DockPanel.Dock="Right" FontSize="10"
+                                                       Foreground="{StaticResource AccentPurpleBrush}"
+                                                       HorizontalAlignment="Right"/>
+                                        </DockPanel>
+                                        <TextBlock Text="Navigated to recruit.zoho.com" FontSize="10.5"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="20,3,0,0"
+                                                   TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Step 2 -->
+                                <Border CornerRadius="6" Padding="10,8" Margin="0,2" Background="#14142A">
+                                    <StackPanel>
+                                        <DockPanel>
+                                            <TextBlock Text="&#x2714;" Foreground="{StaticResource SuccessGreenBrush}"
+                                                       FontSize="12" Margin="0,0,8,0"/>
+                                            <TextBlock Text="Step 2" FontWeight="Bold" FontSize="11"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"/>
+                                            <TextBlock Text="click" DockPanel.Dock="Right" FontSize="10"
+                                                       Foreground="{StaticResource AccentPurpleBrush}"
+                                                       HorizontalAlignment="Right"/>
+                                        </DockPanel>
+                                        <TextBlock Text="Clicked link &#x22;Candidates&#x22;" FontSize="10.5"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="20,3,0,0"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Step 3 -->
+                                <Border CornerRadius="6" Padding="10,8" Margin="0,2" Background="#14142A">
+                                    <StackPanel>
+                                        <DockPanel>
+                                            <TextBlock Text="&#x2714;" Foreground="{StaticResource SuccessGreenBrush}"
+                                                       FontSize="12" Margin="0,0,8,0"/>
+                                            <TextBlock Text="Step 3" FontWeight="Bold" FontSize="11"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"/>
+                                            <TextBlock Text="fill" DockPanel.Dock="Right" FontSize="10"
+                                                       Foreground="{StaticResource AccentPurpleBrush}"
+                                                       HorizontalAlignment="Right"/>
+                                        </DockPanel>
+                                        <TextBlock Text="Filled &#x22;+1 (917) 881-8334&#x22; into search box" FontSize="10.5"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="20,3,0,0"
+                                                   TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Step 4: Running -->
+                                <Border CornerRadius="6" Padding="10,8" Margin="0,2"
+                                        BorderBrush="{StaticResource AccentCyanBrush}" BorderThickness="1">
+                                    <Border.Background>
+                                        <SolidColorBrush Color="{StaticResource AccentCyan}" Opacity="0.07"/>
+                                    </Border.Background>
+                                    <StackPanel>
+                                        <DockPanel>
+                                            <TextBlock Text="&#x25CB;" Foreground="{StaticResource AccentCyanBrush}"
+                                                       FontSize="12" Margin="0,0,8,0"/>
+                                            <TextBlock Text="Step 4" FontWeight="Bold" FontSize="11"
+                                                       Foreground="{StaticResource AccentCyanBrush}"/>
+                                            <TextBlock Text="click_text" DockPanel.Dock="Right" FontSize="10"
+                                                       Foreground="{StaticResource AccentPurpleBrush}"
+                                                       HorizontalAlignment="Right"/>
+                                        </DockPanel>
+                                        <TextBlock Text="Clicking &#x22;Christopher Hong&#x22;..." FontSize="10.5"
+                                                   Foreground="{StaticResource AccentCyanBrush}" Margin="20,3,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Progress bar -->
+            <Border Grid.Row="3" Height="3" Margin="20,8,20,0" CornerRadius="2"
+                    Background="{StaticResource BgCardBrush}">
+                <Border CornerRadius="2" HorizontalAlignment="Left" Width="185">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#00CFFF" Offset="0"/>
+                            <GradientStop Color="#8B5CF6" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+            </Border>
+
+            <!-- Full output log -->
+            <Border Grid.Row="4" CornerRadius="10" Margin="20,8,20,12"
+                    Background="{StaticResource BgCardBrush}" BorderBrush="{StaticResource BorderDimBrush}"
+                    BorderThickness="1" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" Margin="14,8,14,4">
+                        <TextBlock Text="Full Output Log" FontSize="11" FontWeight="Bold"
+                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <Button DockPanel.Dock="Right" Content="Clear" Style="{StaticResource GhostButton}"
+                                FontSize="10" Padding="8,3" HorizontalAlignment="Right"/>
+                    </DockPanel>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="4,0,4,4">
+                        <TextBlock FontFamily="Cascadia Code, Consolas" FontSize="11" Padding="10,4"
+                                   Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"
+                                   LineHeight="17">
+                            <Run Foreground="{StaticResource TextMutedBrush}">═══════════════════════════════════</Run>
+                            <LineBreak/><Run Foreground="{StaticResource TextPrimaryBrush}" FontWeight="Bold">  Connecting to Chrome on port 9238</Run>
+                            <LineBreak/><Run Foreground="{StaticResource TextMutedBrush}">═══════════════════════════════════</Run>
+                            <LineBreak/><Run Foreground="{StaticResource SuccessGreenBrush}">[Connected! Page: recruit.zoho.com | 3 tabs]</Run>
+                            <LineBreak/>[Screenshot size: 22KB]
+                            <LineBreak/>[Page snapshot: 14200 chars | Scroll: page 1 of 1]
+                            <LineBreak/>
+                            <LineBreak/><Run Foreground="{StaticResource TextMutedBrush}">═══════════════════════════════════</Run>
+                            <LineBreak/><Run Foreground="{StaticResource TextPrimaryBrush}" FontWeight="Bold">  Step 1 — Thinking</Run>
+                            <LineBreak/><Run Foreground="{StaticResource TextMutedBrush}">═══════════════════════════════════</Run>
+                            <LineBreak/><Run Foreground="{StaticResource AccentCyanBrush}">Action:</Run> navigate {"url":"https://recruit.zoho.com/..."}
+                            <LineBreak/>[Executing: navigate...]
+                            <LineBreak/><Run Foreground="{StaticResource SuccessGreenBrush}">Result: Navigated to recruit.zoho.com</Run>
+                            <LineBreak/>
+                            <LineBreak/><Run Foreground="{StaticResource TextMutedBrush}">═══════════════════════════════════</Run>
+                            <LineBreak/><Run Foreground="{StaticResource TextPrimaryBrush}" FontWeight="Bold">  Step 2 — Thinking</Run>
+                            <LineBreak/><Run Foreground="{StaticResource TextMutedBrush}">═══════════════════════════════════</Run>
+                            <LineBreak/><Run Foreground="{StaticResource AccentCyanBrush}">Action:</Run> click {"role":"link","name":"Candidates"}
+                            <LineBreak/>[Executing: click...]
+                            <LineBreak/><Run Foreground="{StaticResource SuccessGreenBrush}">Result: Clicked link "Candidates"</Run>
+                        </TextBlock>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

@@ -1,0 +1,441 @@
+<UserControl x:Class="AgenticBrowser.MainView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="#0D0D1A">
+
+    <UserControl.Resources>
+        <!-- Brand Colors -->
+        <SolidColorBrush x:Key="BgDark" Color="#0D0D1A"/>
+        <SolidColorBrush x:Key="BgPanel" Color="#131328"/>
+        <SolidColorBrush x:Key="BgCard" Color="#1A1A38"/>
+        <SolidColorBrush x:Key="BgInput" Color="#222240"/>
+        <SolidColorBrush x:Key="BgHover" Color="#2A2A4E"/>
+        <SolidColorBrush x:Key="Border" Color="#2E2E55"/>
+        <SolidColorBrush x:Key="TextMain" Color="#E8E8F0"/>
+        <SolidColorBrush x:Key="TextDim" Color="#9090B0"/>
+        <SolidColorBrush x:Key="TextMuted" Color="#606085"/>
+        <SolidColorBrush x:Key="Cyan" Color="#00CFFF"/>
+        <SolidColorBrush x:Key="Purple" Color="#8B5CF6"/>
+        <SolidColorBrush x:Key="Magenta" Color="#E91EAA"/>
+        <SolidColorBrush x:Key="Green" Color="#34D399"/>
+        <SolidColorBrush x:Key="Red" Color="#F87171"/>
+
+        <LinearGradientBrush x:Key="BrandGrad" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#00CFFF" Offset="0"/>
+            <GradientStop Color="#8B5CF6" Offset="0.5"/>
+            <GradientStop Color="#E91EAA" Offset="1"/>
+        </LinearGradientBrush>
+
+        <!-- ListBox item style -->
+        <Style x:Key="TaskItem" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="14,12"/>
+            <Setter Property="Margin" Value="4,2"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="bd" CornerRadius="10" Padding="{TemplateBinding Padding}"
+                                Background="Transparent" BorderThickness="1" BorderBrush="Transparent">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#1C1C3A"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#1E1E40"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#3A3A65"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="HistItem" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="Margin" Value="4,1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="bd" CornerRadius="8" Padding="{TemplateBinding Padding}"
+                                Background="Transparent">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#1A1A35"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#1E1E40"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Accent button -->
+        <Style x:Key="BtnAccent" TargetType="Button">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" CornerRadius="10" Padding="0,12"
+                                Background="{StaticResource BrandGrad}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.85"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Pill button -->
+        <Style x:Key="BtnPill" TargetType="Button">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="18,8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" CornerRadius="8" Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{StaticResource Border}" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#353560"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Dark TextBox style -->
+        <Style x:Key="DarkTextBox" TargetType="TextBox">
+            <Setter Property="Background" Value="#222240"/>
+            <Setter Property="Foreground" Value="#E8E8F0"/>
+            <Setter Property="CaretBrush" Value="#E8E8F0"/>
+            <Setter Property="BorderBrush" Value="#2E2E55"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+        </Style>
+
+        <!-- Dark PasswordBox style -->
+        <Style x:Key="DarkPasswordBox" TargetType="PasswordBox">
+            <Setter Property="Background" Value="#222240"/>
+            <Setter Property="Foreground" Value="#E8E8F0"/>
+            <Setter Property="CaretBrush" Value="#E8E8F0"/>
+            <Setter Property="BorderBrush" Value="#2E2E55"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontFamily" Value="Cascadia Code"/>
+        </Style>
+
+        <!-- Dark ComboBox style -->
+        <Style x:Key="DarkComboBox" TargetType="ComboBox">
+            <Setter Property="Background" Value="#222240"/>
+            <Setter Property="Foreground" Value="#E8E8F0"/>
+            <Setter Property="BorderBrush" Value="#2E2E55"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="300"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- LEFT SIDEBAR -->
+        <Border Grid.Column="0" Background="{StaticResource BgPanel}"
+                BorderBrush="{StaticResource Border}" BorderThickness="0,0,1,0">
+            <DockPanel>
+                <!-- Logo + Gear -->
+                <Border DockPanel.Dock="Top" Padding="20,16,16,12">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Left" Text="Active Worker" FontSize="24" FontWeight="Bold"
+                                   VerticalAlignment="Center" FontFamily="Segoe UI">
+                            <TextBlock.Foreground>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#00CFFF" Offset="0"/>
+                                    <GradientStop Color="#8B5CF6" Offset="0.55"/>
+                                    <GradientStop Color="#E91EAA" Offset="1"/>
+                                </LinearGradientBrush>
+                            </TextBlock.Foreground>
+                        </TextBlock>
+                        <Button DockPanel.Dock="Right" Content="&#x2699;" FontSize="22"
+                                Foreground="{StaticResource TextDim}" Background="Transparent"
+                                BorderThickness="0" Cursor="Hand" Width="44" Height="44"
+                                HorizontalAlignment="Right" Click="Gear_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="bd" CornerRadius="8" Background="Transparent"
+                                            Width="44" Height="44">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="bd" Property="Background" Value="#2A2A4E"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </DockPanel>
+                </Border>
+
+                <!-- Gradient line -->
+                <Border DockPanel.Dock="Top" Height="2" Margin="20,0">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#00CFFF" Offset="0"/>
+                            <GradientStop Color="#8B5CF6" Offset="0.5"/>
+                            <GradientStop Color="#E91EAA" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+
+                <!-- Bottom status -->
+                <Border DockPanel.Dock="Bottom" Padding="16,10" Background="#0A0A18">
+                    <TextBlock x:Name="TxtConnectionStatus" Text="&#x25CF; Not connected" FontSize="12"
+                               Foreground="{StaticResource TextMuted}"/>
+                </Border>
+
+                <!-- Sidebar body -->
+                <Grid Margin="0,16,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*" MinHeight="60"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*" MinHeight="80"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- ACTIVE TASKS label -->
+                    <TextBlock Grid.Row="0" Text="ACTIVE TASKS" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextMuted}" Margin="20,0,0,8"/>
+
+                    <ListBox x:Name="LstTasks" Grid.Row="1" Background="Transparent" BorderThickness="0"
+                             Margin="6,0" ItemContainerStyle="{StaticResource TaskItem}"/>
+
+                    <!-- Execute button -->
+                    <Button x:Name="BtnExecute" Grid.Row="2" Content="Execute" Style="{StaticResource BtnAccent}"
+                            Margin="12,8,12,16" Click="Execute_Click"/>
+
+                    <!-- HISTORY label -->
+                    <TextBlock Grid.Row="3" Text="HISTORY" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextMuted}" Margin="20,0,0,8"/>
+
+                    <ListBox x:Name="LstHistory" Grid.Row="4" Background="Transparent" BorderThickness="0"
+                             Margin="6,0,6,8" ItemContainerStyle="{StaticResource HistItem}"/>
+                </Grid>
+            </DockPanel>
+        </Border>
+
+        <!-- RIGHT DETAIL -->
+        <Grid Grid.Column="1" Margin="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>  <!-- Settings (collapsed) -->
+                <RowDefinition Height="Auto"/>  <!-- Task input + controls -->
+                <RowDefinition Height="*"/>     <!-- Screenshot + Steps -->
+                <RowDefinition Height="Auto"/>  <!-- Progress -->
+                <RowDefinition Height="220"/>   <!-- Log -->
+            </Grid.RowDefinitions>
+
+            <!-- Settings (hidden by default) -->
+            <Border x:Name="SettingsPanel" Grid.Row="0" Background="{StaticResource BgPanel}"
+                    BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1"
+                    Padding="24,16" Visibility="Collapsed">
+                <WrapPanel>
+                    <StackPanel Margin="0,0,24,8">
+                        <TextBlock Text="Claude API Key" FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,4"/>
+                        <PasswordBox x:Name="TxtClaudeKey" Style="{StaticResource DarkPasswordBox}" Width="260"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,24,8">
+                        <TextBlock Text="Gemini API Key" FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,4"/>
+                        <PasswordBox x:Name="TxtGeminiKey" Style="{StaticResource DarkPasswordBox}" Width="220"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,24,8">
+                        <TextBlock Text="Model" FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="CboModel" Style="{StaticResource DarkComboBox}" Width="200" SelectedIndex="0">
+                            <ComboBoxItem Content="claude-sonnet-4-6"/>
+                            <ComboBoxItem Content="claude-haiku-4-5-20251001"/>
+                            <ComboBoxItem Content="claude-opus-4-6"/>
+                            <ComboBoxItem Content="gemini-2.5-flash"/>
+                            <ComboBoxItem Content="gemini-2.5-pro"/>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,24,8">
+                        <TextBlock Text="Mode" FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="CboMode" Style="{StaticResource DarkComboBox}" Width="180" SelectedIndex="0">
+                            <ComboBoxItem Content="Direct"/>
+                            <ComboBoxItem Content="Hybrid (Sonnet&#x2192;Flash)"/>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,24,8">
+                        <TextBlock Text="Port" FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,4"/>
+                        <TextBox x:Name="TxtPort" Style="{StaticResource DarkTextBox}" Width="80" Text="9222"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,24,8">
+                        <TextBlock Text="Max Steps" FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,4"/>
+                        <TextBox x:Name="TxtMaxSteps" Style="{StaticResource DarkTextBox}" Width="70" Text="25"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,24,8">
+                        <TextBlock Text="Target URL" FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,4"/>
+                        <TextBox x:Name="TxtTargetUrl" Style="{StaticResource DarkTextBox}" Width="300"
+                                 FontFamily="Segoe UI"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,24,8" VerticalAlignment="Center">
+                        <CheckBox x:Name="ChkHeadless" Content="Headless" Foreground="{StaticResource TextDim}"
+                                  FontSize="13" IsChecked="True" Margin="0,20,0,0"/>
+                    </StackPanel>
+                    <Button x:Name="BtnLaunchChrome" Content="Launch Chrome" Style="{StaticResource BtnPill}"
+                            Background="{StaticResource BgCard}" Foreground="{StaticResource TextDim}"
+                            Margin="0,18,0,8" Click="LaunchChrome_Click"/>
+                </WrapPanel>
+            </Border>
+
+            <!-- Task input + status -->
+            <Border Grid.Row="1" Padding="24,16,24,12" Background="{StaticResource BgDark}">
+                <StackPanel>
+                    <!-- Status bar -->
+                    <DockPanel Margin="0,0,0,12">
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                            <Border x:Name="StatusBadge" CornerRadius="12" Padding="14,6" Margin="0,0,14,0" Background="#15606085">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse x:Name="StatusDot" Width="8" Height="8" Fill="{StaticResource TextMuted}" Margin="0,0,8,0"/>
+                                    <TextBlock x:Name="TxtStatusLabel" Text="Ready" FontSize="13" FontWeight="Bold" Foreground="{StaticResource TextMuted}"/>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock x:Name="TxtStepCounter" Text="" FontSize="14" Foreground="{StaticResource TextDim}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button x:Name="BtnStop" Content="Stop" Background="#C0392B" Foreground="White"
+                                    Style="{StaticResource BtnPill}" Margin="0,0,10,0"
+                                    BorderThickness="0" IsEnabled="False" Click="Stop_Click"/>
+                            <Button x:Name="BtnClearLog" Content="Clear" Background="{StaticResource BgCard}"
+                                    Foreground="{StaticResource TextDim}" Style="{StaticResource BtnPill}"
+                                    Click="ClearLog_Click"/>
+                        </StackPanel>
+                    </DockPanel>
+
+                    <!-- Instruction input -->
+                    <Border CornerRadius="10" Padding="4" Background="{StaticResource BgCard}"
+                            BorderBrush="{StaticResource Border}" BorderThickness="1">
+                        <TextBox x:Name="TxtInstruction" Style="{StaticResource DarkTextBox}"
+                                 Background="Transparent" BorderThickness="0"
+                                 AcceptsReturn="True" TextWrapping="Wrap" MinHeight="48" MaxHeight="120"
+                                 VerticalScrollBarVisibility="Auto" FontSize="13.5"
+                                 Text="" />
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- Screenshot + Steps -->
+            <Grid Grid.Row="2" Margin="24,12,24,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="400"/>
+                    <ColumnDefinition Width="380"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Screenshot -->
+                <Border Grid.Column="0" CornerRadius="12" Margin="0,0,12,0"
+                        Background="{StaticResource BgCard}" BorderBrush="{StaticResource Border}"
+                        BorderThickness="1" ClipToBounds="True">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="  Live Screenshot" FontSize="13" FontWeight="Bold"
+                                   Foreground="{StaticResource TextDim}" Margin="14,12,0,8"/>
+
+                        <!-- Screenshot nav -->
+                        <Border DockPanel.Dock="Bottom" Padding="14,8" Background="#10102A">
+                            <DockPanel>
+                                <Button DockPanel.Dock="Left" Content="&#x25C0;" FontSize="14"
+                                        Foreground="{StaticResource TextMuted}" Background="Transparent"
+                                        BorderThickness="0" Width="36" Height="32" Cursor="Hand"
+                                        Click="PrevScreenshot_Click"/>
+                                <Button DockPanel.Dock="Right" Content="&#x25B6;" FontSize="14"
+                                        Foreground="{StaticResource TextMuted}" Background="Transparent"
+                                        BorderThickness="0" Width="36" Height="32" Cursor="Hand"
+                                        Click="NextScreenshot_Click"/>
+                                <TextBlock x:Name="TxtScreenshotIndex" Text="No screenshots" HorizontalAlignment="Center"
+                                           FontSize="12" Foreground="{StaticResource TextMuted}"
+                                           VerticalAlignment="Center"/>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- Real screenshot image -->
+                        <Image x:Name="ImgScreenshot" Stretch="Uniform" Margin="10,0,10,0"/>
+                    </DockPanel>
+                </Border>
+
+                <!-- Step-by-step -->
+                <Border Grid.Column="1" CornerRadius="12" Background="{StaticResource BgCard}"
+                        BorderBrush="{StaticResource Border}" BorderThickness="1" ClipToBounds="True">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="  Step-by-Step" FontSize="13" FontWeight="Bold"
+                                   Foreground="{StaticResource TextDim}" Margin="14,12,0,10"/>
+
+                        <ScrollViewer x:Name="StepsScroller" VerticalScrollBarVisibility="Auto" Margin="8,0,8,8">
+                            <StackPanel x:Name="StepsPanel"/>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+            </Grid>
+
+            <!-- Progress bar -->
+            <Border Grid.Row="3" Height="4" Margin="24,10,24,0" CornerRadius="2" Background="{StaticResource BgCard}">
+                <Border x:Name="ProgressFill" CornerRadius="2" HorizontalAlignment="Left" Width="0">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#00CFFF" Offset="0"/>
+                            <GradientStop Color="#8B5CF6" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+            </Border>
+
+            <!-- Full log -->
+            <Border Grid.Row="4" CornerRadius="12" Margin="24,10,24,16"
+                    Background="{StaticResource BgCard}" BorderBrush="{StaticResource Border}"
+                    BorderThickness="1" ClipToBounds="True">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="16,10,12,6">
+                        <TextBlock Text="Full Output Log" FontSize="13" FontWeight="Bold"
+                                   Foreground="{StaticResource TextDim}"/>
+                    </DockPanel>
+
+                    <ScrollViewer x:Name="LogScroller" VerticalScrollBarVisibility="Auto" Margin="8,0,8,8">
+                        <TextBlock x:Name="TxtLog" FontFamily="Cascadia Code" FontSize="12.5" Padding="10,4"
+                                   Foreground="{StaticResource TextDim}" TextWrapping="Wrap" LineHeight="19"/>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>
