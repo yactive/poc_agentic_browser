@@ -393,7 +393,7 @@ public class AutomationEngine : IDisposable
     private static string FormatPlanForPrompt(SavedPlan plan)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("PROVEN STRATEGY — YOU MUST FOLLOW ALL STEPS IN ORDER:");
+        sb.AppendLine("REFERENCE PLAN — a strategy that worked for a SIMILAR task before:");
         sb.AppendLine("  Step 0: FIRST navigate to the app's HOME PAGE (e.g., click the logo/home icon, or navigate to the app URL). Do NOT start from a stale page.");
         for (int i = 0; i < plan.Steps.Count; i++)
         {
@@ -407,17 +407,16 @@ public class AutomationEngine : IDisposable
                 sb.AppendLine($"    → ACTION: {hint.Tool} {genericParams}");
             }
         }
-        sb.AppendLine("\nCRITICAL RULES:");
-        sb.AppendLine("- Start with Step 0 (go to home page), then follow Step 1, Step 2, etc. in order.");
-        sb.AppendLine("- Execute ONE action per turn, in order. Do NOT skip steps.");
-        sb.AppendLine("- Use the EXACT data from the TASK above (names, phone numbers, text) — NOT from the strategy.");
-        sb.AppendLine("- The ACTION hints show which tool and selector pattern worked before. Use the SAME tool and selector structure.");
-        sb.AppendLine("- Steps that say CHECK or VERIFY: LOOK at the screenshot carefully before proceeding.");
-        sb.AppendLine("- IF/THEN steps: Follow the condition based on what you actually SEE in the screenshot.");
+        sb.AppendLine("\nHOW TO USE THIS PLAN:");
+        sb.AppendLine("- The TASK description above is your PRIMARY goal. The plan is a GUIDE to help you, not a rigid script.");
+        sb.AppendLine("- Start with Step 0 (go to home page), then follow the plan steps in order.");
+        sb.AppendLine("- Use the EXACT data from the TASK (names, phone numbers, text) — NOT from the plan.");
+        sb.AppendLine("- The ACTION hints show which tool and selector pattern worked before. Use the SAME tool and selector structure when possible.");
+        sb.AppendLine("- **TRUST YOUR EYES over the plan**: LOOK at the screenshot each turn. If what you see DOESN'T match what the plan expects (e.g., plan says 'click Lead' but you see a Contact, or plan says 'click Converted' but you need 'Qualification'), ADAPT — do what makes sense for the TASK, not what the plan says.");
+        sb.AppendLine("- **SKIP steps that don't apply**: If a plan step is irrelevant to the current TASK or to what you see on screen, skip it and move on.");
+        sb.AppendLine("- **ADD steps if needed**: If the TASK requires something the plan doesn't cover, do it. The plan may be incomplete.");
         sb.AppendLine("- If a 'click' fails, IMMEDIATELY try click_text or click_selector instead.");
-        sb.AppendLine("- **STAY ON SCRIPT**: Do NOT invent your own steps or try alternative navigation (e.g., do NOT use App Launcher if the plan says use Search). Only deviate if a step fails after 2 attempts.");
-        sb.AppendLine("- **COMPLETE ALL GOALS from the TASK description** — the plan may not cover every sub-task. After finishing all plan steps, check if any TASK goals remain and complete them.");
-        sb.AppendLine("- Before calling 'done', verify ALL parts of the task are completed.");
+        sb.AppendLine("- Before calling 'done', verify ALL parts of the TASK are completed — not just the plan steps.");
         return sb.ToString();
     }
 
