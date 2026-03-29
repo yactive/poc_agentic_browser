@@ -279,23 +279,14 @@
                         <TextBlock Text="Gemini API Key" FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,4"/>
                         <PasswordBox x:Name="TxtGeminiKey" Style="{StaticResource DarkPasswordBox}" Width="220"/>
                     </StackPanel>
-                    <StackPanel Margin="0,0,24,8">
-                        <TextBlock Text="Model" FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,4"/>
-                        <ComboBox x:Name="CboModel" Style="{StaticResource DarkComboBox}" Width="200" SelectedIndex="0">
-                            <ComboBoxItem Content="claude-sonnet-4-6"/>
-                            <ComboBoxItem Content="claude-haiku-4-5-20251001"/>
-                            <ComboBoxItem Content="claude-opus-4-6"/>
-                            <ComboBoxItem Content="gemini-2.5-flash"/>
-                            <ComboBoxItem Content="gemini-2.5-pro"/>
-                        </ComboBox>
-                    </StackPanel>
-                    <StackPanel Margin="0,0,24,8">
-                        <TextBlock Text="Mode" FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,4"/>
-                        <ComboBox x:Name="CboMode" Style="{StaticResource DarkComboBox}" Width="180" SelectedIndex="0">
-                            <ComboBoxItem Content="Direct"/>
-                            <ComboBoxItem Content="Hybrid (Sonnet&#x2192;Flash)"/>
-                        </ComboBox>
-                    </StackPanel>
+                    <!-- Model/Mode hidden: always Hybrid (Sonnet learns → Flash replays) -->
+                    <ComboBox x:Name="CboModel" Visibility="Collapsed" SelectedIndex="0">
+                        <ComboBoxItem Content="claude-sonnet-4-6"/>
+                    </ComboBox>
+                    <ComboBox x:Name="CboMode" Visibility="Collapsed" SelectedIndex="1">
+                        <ComboBoxItem Content="Direct"/>
+                        <ComboBoxItem Content="Hybrid (Sonnet&#x2192;Flash)"/>
+                    </ComboBox>
                     <StackPanel Margin="0,0,24,8">
                         <TextBlock Text="Port" FontSize="12" Foreground="{StaticResource TextMuted}" Margin="0,0,0,4"/>
                         <TextBox x:Name="TxtPort" Style="{StaticResource DarkTextBox}" Width="80" Text="9222"/>
@@ -315,7 +306,10 @@
                     </StackPanel>
                     <Button x:Name="BtnLaunchChrome" Content="Launch Chrome" Style="{StaticResource BtnPill}"
                             Background="{StaticResource BgCard}" Foreground="{StaticResource TextDim}"
-                            Margin="0,18,0,8" Click="LaunchChrome_Click"/>
+                            Margin="0,18,0,8" Visibility="Collapsed" Click="LaunchChrome_Click"/>
+                    <Button x:Name="BtnClearPlans" Content="Clear Cached Plans" Style="{StaticResource BtnPill}"
+                            Background="{StaticResource BgCard}" Foreground="{StaticResource TextDim}"
+                            Margin="0,18,0,8" Click="ClearPlans_Click"/>
                 </WrapPanel>
             </Border>
 
@@ -336,6 +330,9 @@
                         </StackPanel>
 
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button x:Name="BtnContinueAuth" Content="Continue After Login" Background="#27AE60" Foreground="White"
+                                    Style="{StaticResource BtnPill}" Margin="0,0,10,0"
+                                    BorderThickness="0" Visibility="Collapsed" Click="ContinueAuth_Click"/>
                             <Button x:Name="BtnStop" Content="Stop" Background="#C0392B" Foreground="White"
                                     Style="{StaticResource BtnPill}" Margin="0,0,10,0"
                                     BorderThickness="0" IsEnabled="False" Click="Stop_Click"/>

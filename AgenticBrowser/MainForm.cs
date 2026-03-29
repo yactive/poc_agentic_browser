@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows.Forms;
 using System.Windows.Forms.Integration;
 
@@ -34,6 +35,34 @@ public class MainForm : Form
         _view.ExecuteClicked += async (s, e) => await OnExecute();
         _view.StopClicked += (s, e) => _engine?.Stop();
         _view.LaunchChromeClicked += async (s, e) => await OnLaunchChrome();
+        _view.ContinueAuthClicked += (s, e) =>
+        {
+            _view.ShowAuthContinueButton(false);
+            _engine?.ContinueAfterAuth();
+        };
+        _view.ClearPlansClicked += (s, e) =>
+        {
+            var plansDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "AgenticBrowser", "plans");
+            try
+            {
+                if (Directory.Exists(plansDir))
+                {
+                    var files = Directory.GetFiles(plansDir, "*.json");
+                    foreach (var f in files) File.Delete(f);
+                    _view.AppendLog($"[Cleared {files.Length} cached plan(s)]\n", "#32CD32");
+                }
+                else
+                {
+                    _view.AppendLog("[No cached plans found]\n", "#696969");
+                }
+            }
+            catch (Exception ex)
+            {
+                _view.AppendLog($"[Error clearing plans: {ex.Message}]\n", "#FFA500");
+            }
+        };
 
         FormClosing += (s, e) =>
         {
@@ -170,6 +199,14 @@ public class MainForm : Form
                 Invoke(() => _view.SetRunning(running));
             else
                 _view.SetRunning(running);
+        };
+
+        engine.OnAuthRequired += (service, url) =>
+        {
+            if (InvokeRequired)
+                Invoke(() => _view.ShowAuthContinueButton(true));
+            else
+                _view.ShowAuthContinueButton(true);
         };
     }
 }

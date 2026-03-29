@@ -21,6 +21,8 @@ public partial class MainView : System.Windows.Controls.UserControl
     public event EventHandler? StopClicked;
     public event EventHandler? LaunchChromeClicked;
     public event EventHandler? ClearLogClicked;
+    public event EventHandler? ContinueAuthClicked;
+    public event EventHandler? ClearPlansClicked;
 
     private bool _initialized;
 
@@ -75,6 +77,8 @@ public partial class MainView : System.Windows.Controls.UserControl
     private void Execute_Click(object sender, RoutedEventArgs e) => ExecuteClicked?.Invoke(this, EventArgs.Empty);
     private void Stop_Click(object sender, RoutedEventArgs e) => StopClicked?.Invoke(this, EventArgs.Empty);
     private void LaunchChrome_Click(object sender, RoutedEventArgs e) => LaunchChromeClicked?.Invoke(this, EventArgs.Empty);
+    private void ContinueAuth_Click(object sender, RoutedEventArgs e) => ContinueAuthClicked?.Invoke(this, EventArgs.Empty);
+    private void ClearPlans_Click(object sender, RoutedEventArgs e) => ClearPlansClicked?.Invoke(this, EventArgs.Empty);
     private void ClearLog_Click(object sender, RoutedEventArgs e)
     {
         TxtLog.Inlines.Clear();
@@ -103,8 +107,8 @@ public partial class MainView : System.Windows.Controls.UserControl
         {
             ClaudeApiKey = TxtClaudeKey.Password,
             GeminiApiKey = TxtGeminiKey.Password,
-            SelectedModel = (CboModel.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "claude-sonnet-4-6",
-            ModeIndex = CboMode.SelectedIndex,
+            SelectedModel = "claude-sonnet-4-6",
+            ModeIndex = 1, // Always Hybrid
             Port = int.TryParse(TxtPort.Text, out var p) ? p : 9222,
             MaxSteps = int.TryParse(TxtMaxSteps.Text, out var s) ? s : 25,
             TargetUrl = TxtTargetUrl.Text,
@@ -447,6 +451,12 @@ public partial class MainView : System.Windows.Controls.UserControl
             Style = (Style)FindResource("HistItem"),
         };
         LstHistory.Items.Insert(0, item); // newest first
+    }
+
+    public void ShowAuthContinueButton(bool show)
+    {
+        if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(() => ShowAuthContinueButton(show)); return; }
+        BtnContinueAuth.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 
     public int StepCount => StepsPanel.Children.Count;

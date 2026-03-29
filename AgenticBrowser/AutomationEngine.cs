@@ -22,6 +22,7 @@ public class AutomationEngine : IDisposable
     private IBrowser? _browser;
     private IBrowserContext? _context;
     private IPage? _page;
+    private Process? _chromeProcess;
 
     // Tracking
     private string _lastActionKey = "";
@@ -39,6 +40,10 @@ public class AutomationEngine : IDisposable
     private List<RecordedStep>? _recordingSteps;
     private string? _hybridModelOverride;
 
+    // Auth flow
+    private TaskCompletionSource<bool>? _authContinueTcs;
+    private bool _authDoneRecently; // Suppress auth re-detection for a few steps after login
+
     // Events
     public event Action<string, string>? OnLogMessage;        // (message, colorHex)
     public event Action<byte[]>? OnScreenshotCaptured;
@@ -47,6 +52,7 @@ public class AutomationEngine : IDisposable
     public event Action<bool, string>? OnTaskCompleted;       // (success, message)
     public event Action<string>? OnStatusChanged;
     public event Action<bool>? OnRunningChanged;
+    public event Action<string, string>? OnAuthRequired;       // (service, loginUrl)
 
     private class RecordedStep
     {
@@ -65,6 +71,7 @@ public class AutomationEngine : IDisposable
         public List<string> Steps { get; set; } = new();
         // NEW: concrete action recordings for each step, so Flash knows exactly what tool+params to use
         public List<ActionHint>? ActionHints { get; set; }
+        [JsonIgnore] public string? FilePath { get; set; } // Track file location for overwrite
     }
 
     private class ActionHint
@@ -162,7 +169,13 @@ public class AutomationEngine : IDisposable
     public void Stop()
     {
         _cts?.Cancel();
+        _authContinueTcs?.TrySetCanceled();
         OnStatusChanged?.Invoke("Stopping...");
+    }
+
+    public void ContinueAfterAuth()
+    {
+        _authContinueTcs?.TrySetResult(true);
     }
 
     public async Task LaunchChromeAsync()
@@ -190,18 +203,23 @@ public class AutomationEngine : IDisposable
         var plans = new List<SavedPlan>();
         foreach (var file in Directory.GetFiles(PlansDir, "*.json"))
         {
-            try { plans.Add(JsonConvert.DeserializeObject<SavedPlan>(File.ReadAllText(file))!); }
+            try
+            {
+                var plan = JsonConvert.DeserializeObject<SavedPlan>(File.ReadAllText(file))!;
+                plan.FilePath = file;
+                plans.Add(plan);
+            }
             catch { }
         }
         return plans;
     }
 
-    private static void SavePlan(SavedPlan plan)
+    private static void SavePlan(SavedPlan plan, string? overwritePath = null)
     {
         Directory.CreateDirectory(PlansDir);
-        var id = Guid.NewGuid().ToString("N")[..8];
+        var path = overwritePath ?? Path.Combine(PlansDir, $"plan_{Guid.NewGuid().ToString("N")[..8]}.json");
         var json = JsonConvert.SerializeObject(plan, Formatting.Indented);
-        File.WriteAllText(Path.Combine(PlansDir, $"plan_{id}.json"), json);
+        File.WriteAllText(path, json);
     }
 
     private async Task<SavedPlan?> MatchPlanWithAI(string taskText, List<SavedPlan> plans, CancellationToken ct)
@@ -212,12 +230,18 @@ public class AutomationEngine : IDisposable
         for (int i = 0; i < plans.Count; i++)
             sb.AppendLine($"{i + 1}. {plans[i].Description}");
         sb.AppendLine();
-        sb.AppendLine("Is the following task the same TYPE of workflow as any strategy above?");
-        sb.AppendLine("Ignore specific data (names, phone numbers, text) — only match the WORKFLOW PATTERN.");
+        sb.AppendLine("Does the following task match any strategy above?");
+        sb.AppendLine();
+        sb.AppendLine("MATCHING RULES:");
+        sb.AppendLine("- The OBJECT TYPE must match (e.g., Lead ≠ Opportunity ≠ Contact ≠ Account — these are DIFFERENT workflows)");
+        sb.AppendLine("- The ACTIONS must match (e.g., 'update status' ≈ 'change stage', but 'log a call' ≠ 'send email')");
+        sb.AppendLine("- The TARGET APP must match (e.g., Salesforce ≠ HubSpot)");
+        sb.AppendLine("- Ignore specific VALUES like names, phone numbers, text content, status values");
+        sb.AppendLine("- The NUMBER and TYPE of sub-tasks must be similar (e.g., 2-step task ≠ 5-step task)");
         sb.AppendLine();
         sb.AppendLine($"Task: {taskText}");
         sb.AppendLine();
-        sb.AppendLine("Reply with ONLY the number (e.g. '1'), or 'none'.");
+        sb.AppendLine("Reply with ONLY the number (e.g. '1'), or 'none'. When in doubt, reply 'none'.");
 
         var response = await AskClaude(sb.ToString(), ct);
         response = response.Trim().TrimEnd('.');
@@ -369,7 +393,8 @@ public class AutomationEngine : IDisposable
     private static string FormatPlanForPrompt(SavedPlan plan)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("PROVEN STRATEGY (follow these steps — adapt based on what you see):");
+        sb.AppendLine("PROVEN STRATEGY — YOU MUST FOLLOW ALL STEPS IN ORDER:");
+        sb.AppendLine("  Step 0: FIRST navigate to the app's HOME PAGE (e.g., click the logo/home icon, or navigate to the app URL). Do NOT start from a stale page.");
         for (int i = 0; i < plan.Steps.Count; i++)
         {
             sb.AppendLine($"  Step {i + 1}: {plan.Steps[i]}");
@@ -382,14 +407,17 @@ public class AutomationEngine : IDisposable
                 sb.AppendLine($"    → ACTION: {hint.Tool} {genericParams}");
             }
         }
-        sb.AppendLine("\nIMPORTANT:");
-        sb.AppendLine("- Follow this strategy step by step. Execute ONE action per turn.");
+        sb.AppendLine("\nCRITICAL RULES:");
+        sb.AppendLine("- Start with Step 0 (go to home page), then follow Step 1, Step 2, etc. in order.");
+        sb.AppendLine("- Execute ONE action per turn, in order. Do NOT skip steps.");
         sb.AppendLine("- Use the EXACT data from the TASK above (names, phone numbers, text) — NOT from the strategy.");
         sb.AppendLine("- The ACTION hints show which tool and selector pattern worked before. Use the SAME tool and selector structure.");
-        sb.AppendLine("- Steps that say CHECK or VERIFY: LOOK at the screenshot carefully before proceeding. Make decisions based on what you actually SEE.");
-        sb.AppendLine("- IF/THEN steps: Follow the condition — don't blindly follow the action if the condition doesn't match.");
-        sb.AppendLine("- If a 'click' action hint shows role+name, try that first. If it fails, IMMEDIATELY try click_text or click_selector.");
-        sb.AppendLine("- When all steps are done, call 'done' with success=true.");
+        sb.AppendLine("- Steps that say CHECK or VERIFY: LOOK at the screenshot carefully before proceeding.");
+        sb.AppendLine("- IF/THEN steps: Follow the condition based on what you actually SEE in the screenshot.");
+        sb.AppendLine("- If a 'click' fails, IMMEDIATELY try click_text or click_selector instead.");
+        sb.AppendLine("- **STAY ON SCRIPT**: Do NOT invent your own steps or try alternative navigation (e.g., do NOT use App Launcher if the plan says use Search). Only deviate if a step fails after 2 attempts.");
+        sb.AppendLine("- **COMPLETE ALL GOALS from the TASK description** — the plan may not cover every sub-task. After finishing all plan steps, check if any TASK goals remain and complete them.");
+        sb.AppendLine("- Before calling 'done', verify ALL parts of the task are completed.");
         return sb.ToString();
     }
 
@@ -460,6 +488,7 @@ public class AutomationEngine : IDisposable
                 UseShellExecute = false,
             };
             var proc = Process.Start(psi);
+            _chromeProcess = proc;
             Log($"[Chrome PID: {proc?.Id}]\n", "#696969");
 
             OnStatusChanged?.Invoke("Waiting for Chrome debug port...");
@@ -575,6 +604,515 @@ public class AutomationEngine : IDisposable
         _context = null;
         _browser = null;
         _playwright = null;
+    }
+
+    private async Task KillChromeAsync()
+    {
+        var killed = false;
+
+        // Try tracked process first
+        try
+        {
+            if (_chromeProcess != null && !_chromeProcess.HasExited)
+            {
+                Log($"[Killing Chrome PID {_chromeProcess.Id}...]\n", "#696969");
+                _chromeProcess.Kill(true);
+                _chromeProcess.WaitForExit(5000);
+                killed = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"[Kill tracked Chrome: {ex.Message}]\n", "#696969");
+        }
+        _chromeProcess = null;
+
+        // If no tracked process or port still open, find Chrome by command line args
+        if (!killed || await IsChromeDebugPortOpen(_settings.Port))
+        {
+            try
+            {
+                var port = _settings.Port;
+                // Find all chrome processes that use our debug port
+                foreach (var proc in Process.GetProcessesByName("chrome"))
+                {
+                    try
+                    {
+                        // Check if this chrome instance is using our profile directory (which contains the port number)
+                        var profileMarker = $"ChromeProfile_{port}";
+                        // We can't easily read command line on Windows, so just check if port is in use
+                        // Kill all chrome processes from our specific profile
+                    }
+                    catch { }
+                }
+
+                // More reliable: use netstat-style approach via HTTP check then force kill
+                if (await IsChromeDebugPortOpen(port))
+                {
+                    // Get browser websocket URL which includes the PID info
+                    try
+                    {
+                        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+                        var json = await http.GetStringAsync($"http://127.0.0.1:{port}/json/version");
+                        // Try to close via CDP
+                        await http.GetAsync($"http://127.0.0.1:{port}/json/close");
+                    }
+                    catch { }
+
+                    // If still open, kill chrome processes using our user data dir
+                    if (await IsChromeDebugPortOpen(port))
+                    {
+                        var profileDir = Path.Combine(
+                            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                            "AgenticBrowser", $"ChromeProfile_{port}");
+
+                        foreach (var proc in Process.GetProcessesByName("chrome"))
+                        {
+                            try
+                            {
+                                // Kill chrome processes — be aggressive since we need the port
+                                proc.Kill(true);
+                                killed = true;
+                            }
+                            catch { }
+                        }
+                        if (killed)
+                            Log($"[Killed Chrome processes on port {port}]\n", "#696969");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[Kill Chrome by port: {ex.Message}]\n", "#696969");
+            }
+        }
+
+        // Wait for port to be released
+        for (int i = 0; i < 20; i++)
+        {
+            if (!await IsChromeDebugPortOpen(_settings.Port)) break;
+            await Task.Delay(500);
+        }
+    }
+
+    /// <summary>
+    /// Gracefully close Chrome so it flushes cookies/session data to disk, then wait for port release.
+    /// </summary>
+    private async Task GracefulCloseChrome()
+    {
+        // Use browser.CloseAsync() which sends Browser.close CDP command — proper shutdown that flushes cookies
+        try
+        {
+            if (_browser != null)
+            {
+                Log("[Closing browser gracefully (saving cookies)...]\n", "#696969");
+                await _browser.CloseAsync();
+                Log("[Browser closed]\n", "#696969");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"[Browser close: {ex.Message}]\n", "#696969");
+        }
+
+        // Clear Playwright objects (browser already closed above, don't dispose again)
+        _page = null;
+        _context = null;
+        _browser = null;
+        try { _playwright?.Dispose(); } catch { }
+        _playwright = null;
+
+        // Give Chrome process time to fully exit and release profile lock
+        await Task.Delay(3000);
+
+        // If Chrome is STILL running (browser.Close didn't kill it), try CDP shutdown
+        if (await IsChromeDebugPortOpen(_settings.Port))
+        {
+            Log("[Chrome still running, sending shutdown...]\n", "#696969");
+            try
+            {
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                // Try to close each tab first (forces save)
+                var tabsJson = await http.GetStringAsync($"http://127.0.0.1:{_settings.Port}/json/list");
+                var tabs = Newtonsoft.Json.Linq.JArray.Parse(tabsJson);
+                foreach (var tab in tabs)
+                {
+                    var tabId = tab["id"]?.ToString();
+                    if (tabId != null)
+                    {
+                        try { await http.GetAsync($"http://127.0.0.1:{_settings.Port}/json/close/{tabId}"); } catch { }
+                    }
+                }
+                await Task.Delay(2000);
+            }
+            catch { }
+        }
+
+        // If STILL running, force kill as last resort
+        if (await IsChromeDebugPortOpen(_settings.Port))
+        {
+            Log("[Force killing Chrome...]\n", "#696969");
+            await KillChromeAsync();
+        }
+        else
+        {
+            _chromeProcess = null;
+        }
+
+        // Wait for port to be fully released
+        for (int i = 0; i < 10; i++)
+        {
+            if (!await IsChromeDebugPortOpen(_settings.Port)) break;
+            await Task.Delay(500);
+        }
+    }
+
+    /// <summary>
+    /// Handles auth flow: switches to non-headless if needed, waits for user to log in, then resumes.
+    /// </summary>
+    private async Task HandleAuthRequiredAsync(string service, string loginUrl, CancellationToken ct)
+    {
+        _authDoneRecently = true; // Suppress re-triggering auth detection
+        var wasHeadless = _settings.Headless;
+        var port = _settings.Port;
+        var nonHeadlessPort = port + 1; // Use a different port for visible Chrome
+        string? postLoginUrl = null; // URL user ends up on after login
+
+        if (wasHeadless)
+        {
+            Log($"[Launching visible browser for login on port {nonHeadlessPort}...]\n", "#696969");
+
+            // Launch a SEPARATE non-headless Chrome on a different port + different profile
+            var chromePath = FindChromeExecutable();
+            if (chromePath != null)
+            {
+                var tempProfileDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "AgenticBrowser", $"ChromeProfile_{nonHeadlessPort}_login");
+                Directory.CreateDirectory(tempProfileDir);
+
+                var args = $"--remote-debugging-port={nonHeadlessPort} --remote-allow-origins=* --user-data-dir=\"{tempProfileDir}\"";
+                Log($"[Launching visible Chrome on port {nonHeadlessPort}...]\n", "#B4DCFF");
+                var psi = new ProcessStartInfo
+                {
+                    FileName = chromePath,
+                    Arguments = args,
+                    UseShellExecute = false,
+                };
+                var loginProc = Process.Start(psi);
+                Log($"[Visible Chrome PID: {loginProc?.Id}]\n", "#696969");
+
+                // Wait for the non-headless Chrome to be ready
+                var ready = await WaitForDebugPort(nonHeadlessPort, timeoutSeconds: 15);
+                if (!ready)
+                {
+                    Log($"[Visible Chrome didn't start on port {nonHeadlessPort}]\n", "#FFA500");
+                    return;
+                }
+
+                // Connect Playwright to the login browser and navigate
+                var loginPlaywright = await Playwright.CreateAsync();
+                IBrowser? loginBrowser = null;
+                IPage? loginPage = null;
+                try
+                {
+                    loginBrowser = await loginPlaywright.Chromium.ConnectOverCDPAsync(
+                        $"http://127.0.0.1:{nonHeadlessPort}",
+                        new BrowserTypeConnectOverCDPOptions { Timeout = 15000 });
+                    var loginCtx = loginBrowser.Contexts.Count > 0 ? loginBrowser.Contexts[0] : null;
+                    loginPage = loginCtx?.Pages.FirstOrDefault() ?? await loginCtx!.NewPageAsync();
+
+                    if (!string.IsNullOrEmpty(loginUrl))
+                    {
+                        try { await loginPage.GotoAsync(loginUrl, new() { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 30000 }); }
+                        catch { }
+                    }
+
+                    // Notify UI — user logs in on the visible browser
+                    Log($"\n[AUTH REQUIRED] Please log in to {service} in the visible browser window, then click 'Continue After Login'.\n", "#FFA500");
+                    OnAuthRequired?.Invoke(service, loginUrl);
+                    OnStatusChanged?.Invoke($"Waiting for login to {service}...");
+
+                    _authContinueTcs = new TaskCompletionSource<bool>();
+                    using (ct.Register(() => _authContinueTcs.TrySetCanceled()))
+                    {
+                        await _authContinueTcs.Task;
+                    }
+                    _authContinueTcs = null;
+
+                    Log($"[User confirmed login. Extracting session cookies...]\n", "#696969");
+
+                    // Capture the URL the user ended up on AFTER login (e.g., the app dashboard)
+                    postLoginUrl = loginPage.Url;
+                    Log($"[Post-login URL: {postLoginUrl}]\n", "#696969");
+
+                    // EXTRACT ALL COOKIES from the login browser via Playwright API
+                    var loginCookies = await loginPage.Context.CookiesAsync();
+                    Log($"[Extracted {loginCookies.Count} cookies from login session]\n", "#696969");
+
+                    // Now inject cookies into the HEADLESS browser context
+                    // The headless Chrome is still running on the original port
+                    if (_page != null && _context != null && loginCookies.Count > 0)
+                    {
+                        // Clear existing cookies in headless browser
+                        await _context.ClearCookiesAsync();
+
+                        // Convert and inject each cookie
+                        var cookieList = new List<Cookie>();
+                        foreach (var c in loginCookies)
+                        {
+                            var newCookie = new Cookie
+                            {
+                                Name = c.Name,
+                                Value = c.Value,
+                                Domain = c.Domain,
+                                Path = c.Path,
+                                Secure = c.Secure,
+                                HttpOnly = c.HttpOnly,
+                                Expires = c.Expires,
+                            };
+                            // Map SameSite
+                            if (c.SameSite == SameSiteAttribute.Lax) newCookie.SameSite = SameSiteAttribute.Lax;
+                            else if (c.SameSite == SameSiteAttribute.Strict) newCookie.SameSite = SameSiteAttribute.Strict;
+                            else newCookie.SameSite = SameSiteAttribute.None;
+                            cookieList.Add(newCookie);
+                        }
+
+                        await _context.AddCookiesAsync(cookieList);
+                        Log($"[Injected {cookieList.Count} cookies into headless browser]\n", "#32CD32");
+                    }
+                }
+                finally
+                {
+                    // Close the login browser — we don't need it anymore
+                    try { loginBrowser?.DisposeAsync().AsTask().Wait(3000); } catch { }
+                    try { loginPlaywright.Dispose(); } catch { }
+
+                    // Kill the login Chrome process
+                    try
+                    {
+                        if (loginProc != null && !loginProc.HasExited)
+                        {
+                            loginProc.Kill(true);
+                            loginProc.WaitForExit(5000);
+                        }
+                    }
+                    catch { }
+                    Log($"[Visible login browser closed]\n", "#696969");
+                }
+            }
+        }
+        else
+        {
+            // Already non-headless — just notify user to log in
+            Log($"\n[AUTH REQUIRED] Please log in to {service} in the browser window, then click 'Continue After Login'.\n", "#FFA500");
+            OnAuthRequired?.Invoke(service, loginUrl);
+            OnStatusChanged?.Invoke($"Waiting for login to {service}...");
+
+            _authContinueTcs = new TaskCompletionSource<bool>();
+            using (ct.Register(() => _authContinueTcs.TrySetCanceled()))
+            {
+                await _authContinueTcs.Task;
+            }
+            _authContinueTcs = null;
+        }
+
+        Log($"[Login complete. Resuming automation...]\n", "#32CD32");
+
+        // Navigate to where the user ended up after login (NOT the login URL!)
+        if (_page != null)
+        {
+            // Prefer the post-login URL (dashboard/app), fall back to target URL
+            var navigateUrl = !string.IsNullOrEmpty(postLoginUrl) ? postLoginUrl
+                : !string.IsNullOrEmpty(_settings.TargetUrl) ? _settings.TargetUrl : "";
+
+            if (!string.IsNullOrEmpty(navigateUrl))
+            {
+                Log($"[Navigating to {navigateUrl} with session...]\n", "#696969");
+                try { await _page.GotoAsync(navigateUrl, new() { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 30000 }); }
+                catch { }
+            }
+            else
+            {
+                try { await _page.ReloadAsync(new() { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 30000 }); }
+                catch { }
+            }
+        }
+
+        OnStatusChanged?.Invoke("Login complete — resuming task");
+    }
+
+    /// <summary>
+    /// Research phase: Ask Claude Sonnet (with web search) for the fastest way to do the task.
+    /// Returns a concise step-by-step guide optimized for fewest clicks.
+    /// </summary>
+    private async Task<string?> ResearchTaskDocumentation(string instruction, JObject currentState, CancellationToken ct)
+    {
+        if (_page == null) return null;
+
+        // Detect the app from the current URL
+        var currentUrl = _page.Url;
+        var appName = "";
+        try
+        {
+            var uri = new Uri(currentUrl);
+            var host = uri.Host.ToLower();
+            if (host.Contains("salesforce")) appName = "Salesforce Lightning";
+            else if (host.Contains("hubspot")) appName = "HubSpot";
+            else if (host.Contains("jira") || host.Contains("atlassian")) appName = "Jira";
+            else if (host.Contains("zendesk")) appName = "Zendesk";
+            else if (host.Contains("monday")) appName = "Monday.com";
+            else if (host.Contains("notion")) appName = "Notion";
+            else if (host.Contains("asana")) appName = "Asana";
+            else if (host.Contains("freshdesk") || host.Contains("freshworks")) appName = "Freshdesk";
+            else if (host.Contains("pipedrive")) appName = "Pipedrive";
+            else if (host.Contains("zoho")) appName = "Zoho CRM";
+            else if (host.Contains("dynamics") || host.Contains("crm.dynamics")) appName = "Microsoft Dynamics 365";
+            else if (host.Contains("servicenow")) appName = "ServiceNow";
+            else appName = host.Replace("www.", "").Split('.')[0];
+        }
+        catch { }
+
+        if (string.IsNullOrEmpty(appName)) return null;
+
+        var screenshot = currentState["screenshotBase64"]?.ToString() ?? "";
+
+        var researchPrompt = $@"I'm building a Playwright browser automation bot that needs to perform this task in {appName}:
+
+TASK: {instruction}
+
+CONTEXT: This will be executed by Playwright (headless browser automation) — NOT a human. So prioritize approaches that work best for Playwright:
+- Playwright can use CSS selectors, ARIA roles, and accessibility names to find elements
+- Playwright can navigate directly to URLs (much faster than clicking through menus)
+- Playwright can fill inputs, click buttons, press keyboard shortcuts
+- Playwright CANNOT hover reliably on some dynamic menus, and can miss elements that appear on hover
+- Playwright works best with stable selectors and explicit buttons, NOT drag-and-drop or complex mouse interactions
+
+Search the web for how to do this in {appName}, then give me UP TO 3 DIFFERENT approaches, ranked from EASIEST for Playwright to hardest:
+
+**APPROACH 1 (BEST for Playwright):** The most automation-friendly way. Prefer direct URL navigation, global search, keyboard shortcuts, stable UI elements.
+**APPROACH 2 (BACKUP):** An alternative path through GENUINELY different UI elements, in case Approach 1 hits a snag.
+**APPROACH 3 (LAST RESORT):** A completely different method (e.g., different starting point, different feature).
+
+IMPORTANT: Only include approaches that are GENUINELY different from each other. If there's really only 1 way to do it, give only 1 approach. If there are 2 distinct ways, give 2. Do NOT invent fake alternatives or pad with minor variations of the same approach.
+
+For EACH approach provide:
+- Numbered steps (max 8-10 per approach)
+- Exact button names, ARIA labels, field names, CSS classes if known
+- Direct URLs where possible (e.g., /lightning/o/Lead/list)
+- Why it's good (or risky) for Playwright
+
+The bot will try Approach 1 first. If it fails, it falls back to the next one.";
+
+        // Call Sonnet with web_search tool enabled
+        var body = new JObject
+        {
+            ["model"] = "claude-sonnet-4-6",
+            ["max_tokens"] = 3000,
+            ["tools"] = new JArray
+            {
+                new JObject
+                {
+                    ["type"] = "web_search_20250305",
+                    ["name"] = "web_search",
+                    ["max_uses"] = 5,
+                }
+            },
+            ["messages"] = new JArray
+            {
+                new JObject
+                {
+                    ["role"] = "user",
+                    ["content"] = new JArray
+                    {
+                        new JObject
+                        {
+                            ["type"] = "image",
+                            ["source"] = new JObject
+                            {
+                                ["type"] = "base64",
+                                ["media_type"] = "image/jpeg",
+                                ["data"] = screenshot,
+                            }
+                        },
+                        new JObject { ["type"] = "text", ["text"] = researchPrompt },
+                    }
+                }
+            }
+        };
+
+        using var http = new HttpClient();
+        http.Timeout = TimeSpan.FromSeconds(60); // longer timeout for web search
+        http.DefaultRequestHeaders.Add("x-api-key", _settings.ClaudeApiKey);
+        http.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+        var content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json");
+        var resp = await http.PostAsync("https://api.anthropic.com/v1/messages", content, ct);
+        var respText = await resp.Content.ReadAsStringAsync(ct);
+        var respBody = JObject.Parse(respText);
+
+        // Extract text from response (may have multiple content blocks with web search results)
+        var guide = "";
+        var contentBlocks = respBody["content"] as JArray;
+        if (contentBlocks != null)
+        {
+            foreach (var block in contentBlocks)
+            {
+                if (block["type"]?.ToString() == "text")
+                {
+                    guide += block["text"]?.ToString() + "\n";
+                }
+            }
+        }
+        guide = guide.Trim();
+
+        if (!string.IsNullOrEmpty(guide))
+        {
+            Log($"[RESEARCH] Fastest path guide:\n{guide}\n", "#00BFFF");
+        }
+
+        return string.IsNullOrEmpty(guide) ? null : guide;
+    }
+
+    /// <summary>
+    /// Lightweight AI call with a screenshot for yes/no checks.
+    /// </summary>
+    private async Task<string> AskAIWithScreenshot(string prompt, string base64Image, CancellationToken ct)
+    {
+        var body = new JObject
+        {
+            ["model"] = "claude-sonnet-4-6",
+            ["max_tokens"] = 50,
+            ["messages"] = new JArray
+            {
+                new JObject
+                {
+                    ["role"] = "user",
+                    ["content"] = new JArray
+                    {
+                        new JObject
+                        {
+                            ["type"] = "image",
+                            ["source"] = new JObject
+                            {
+                                ["type"] = "base64",
+                                ["media_type"] = "image/jpeg",
+                                ["data"] = base64Image,
+                            }
+                        },
+                        new JObject { ["type"] = "text", ["text"] = prompt },
+                    }
+                }
+            }
+        };
+
+        using var http = new HttpClient();
+        http.Timeout = TimeSpan.FromSeconds(30);
+        http.DefaultRequestHeaders.Add("x-api-key", _settings.ClaudeApiKey);
+        http.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+        var content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json");
+        var resp = await http.PostAsync("https://api.anthropic.com/v1/messages", content, ct);
+        var respBody = JObject.Parse(await resp.Content.ReadAsStringAsync(ct));
+        return respBody["content"]?[0]?["text"]?.ToString() ?? "";
     }
 
     // ==================== Page State ====================
@@ -1231,9 +1769,47 @@ public class AutomationEngine : IDisposable
             }
         }
 
+        // Close any stale dialogs/modals from previous sessions and reset to a clean state
+        if (_page != null)
+        {
+            try
+            {
+                // Press Escape to close any open dialog/modal from a previous run
+                await _page.Keyboard.PressAsync("Escape");
+                await Task.Delay(500, ct);
+                await _page.Keyboard.PressAsync("Escape");
+                await Task.Delay(500, ct);
+            }
+            catch { }
+        }
+
         LogSection("Getting Initial Page State");
         var state = await GetPageState(ct);
         if (state == null) return;
+
+        // Pre-task auth check: detect login pages before wasting steps
+        if (!string.IsNullOrWhiteSpace(_settings.ClaudeApiKey))
+        {
+            try
+            {
+                var loginCheck = await AskAIWithScreenshot(
+                    "Look at this screenshot of a web page. Is this a login page, sign-in page, or authentication page that requires the user to enter credentials before accessing the application? Reply with ONLY 'LOGIN_PAGE' or 'NOT_LOGIN'.",
+                    state["screenshotBase64"]!.ToString(), ct);
+
+                if (loginCheck.Contains("LOGIN_PAGE", StringComparison.OrdinalIgnoreCase))
+                {
+                    Log("[Login page detected — starting auth flow]\n", "#FFA500");
+                    await HandleAuthRequiredAsync("the target site", _page?.Url ?? "", ct);
+
+                    state = await GetPageState(ct);
+                    if (state == null) return;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[Auth pre-check skipped: {ex.Message}]\n", "#696969");
+            }
+        }
 
         var messages = new List<object>();
         var instruction = _settings.Instruction;
@@ -1241,9 +1817,15 @@ public class AutomationEngine : IDisposable
         if (!string.IsNullOrEmpty(targetUrl))
             taskText += $"\nTarget URL: {targetUrl}";
 
+        // Warn AI about stale page from previous session
+        var currentPageUrl = _page?.Url ?? "";
+        if (!string.IsNullOrEmpty(currentPageUrl) && !currentPageUrl.StartsWith("chrome://") && !currentPageUrl.Contains("about:blank"))
+            taskText += $"\n\n⚠️ WARNING: The browser currently shows a page from a PREVIOUS session ({currentPageUrl}). This is NOT necessarily the right page for your task. You MUST navigate to find the correct record/page. Do NOT act on what's currently displayed unless you have confirmed it matches the task.";
+
         var isHybridMode = _settings.ModeIndex == 1;
         SavedPlan? cachedPlan = null;
         _recordingSteps = null;
+        string? docGuide = null;
 
         if (isHybridMode)
         {
@@ -1271,7 +1853,7 @@ public class AutomationEngine : IDisposable
             }
             else
             {
-                Log("[HYBRID] No matching strategy — learning with Sonnet (will save on success)\n", "#FFC832");
+                Log("[HYBRID] No matching strategy — exploring manually first (will research if stuck)\n", "#FFC832");
                 _recordingSteps = new List<RecordedStep>();
             }
         }
@@ -1294,6 +1876,9 @@ public class AutomationEngine : IDisposable
         _samePageCount = 0;
         _recentFailedActions.Clear();
         _recentActions.Clear();
+        var _taskSucceeded = false; // Track outcome for Flash fallback
+        var _currentApproach = 1; // 1=manual, 2=docs guide, 3=manual again (avoid failed)
+        var _allFailedActions = new List<string>(); // Track ALL actions that got stuck, to avoid retrying
 
         if (isHybridMode)
         {
@@ -1359,25 +1944,96 @@ public class AutomationEngine : IDisposable
                 _repeatCount = 1;
             _lastActionKey = actionKey;
 
-            if (_repeatCount >= 3)
+            // Block exact same action — but don't trigger phase switch yet, just tell AI to try different method
+            if (_allFailedActions.Contains(actionKey))
             {
-                Log($"\n[Stopped: same action repeated {_repeatCount}x]\n", "#FFA500");
-                OnStepCompleted?.Invoke(step, false, "Stuck in loop");
-                break;
+                Log($"[Blocked: already tried this exact action]\n", "#FFA500");
+                messages.Add(new { role = "user", content = new object[] { new { type = "tool_result", tool_use_id = toolUseId, content = "BLOCKED — you already tried this exact action and it didn't work. Use a DIFFERENT method (different selector, different button, keyboard shortcut, etc.)" } } });
+                OnStepCompleted?.Invoke(step, false, "Blocked — try different method");
+                continue;
             }
 
-            // Detect cycling patterns (same action name or target with slight variations)
+            if (_repeatCount >= 2)
+            {
+                // Exact same action twice in a row — block it, add to failed list, tell AI to try different method
+                Log($"\n[Same action repeated — try a different method]\n", "#FFA500");
+                _allFailedActions.Add(actionKey);
+                _repeatCount = 0;
+                // Remove from recording
+                if (_recordingSteps != null)
+                {
+                    var stuckKey = actionKey;
+                    _recordingSteps.RemoveAll(s => $"{s.Action}:{s.Input.ToString(Formatting.None)}" == stuckKey);
+                }
+                messages.Add(new { role = "user", content = new object[] { new { type = "tool_result", tool_use_id = toolUseId, content = "BLOCKED — exact same action repeated. Try a DIFFERENT method to achieve the same goal (e.g., click_selector instead of click, click_text, keyboard shortcut, Edit button, etc.)" } } });
+                OnStepCompleted?.Invoke(step, false, "Try different method");
+                continue;
+            }
+
+            // Detect cycling patterns (same FULL action — name+target — repeating)
             _recentActions.Add(actionKey);
             if (_recentActions.Count >= 8)
             {
                 var last8 = _recentActions.Skip(_recentActions.Count - 8).ToList();
-                var actionNames = last8.Select(a => a.Split(':')[0]).ToList();
-                var topAction = actionNames.GroupBy(n => n).OrderByDescending(g => g.Count()).First();
-                if (topAction.Count() >= 6 && topAction.Key != "wait" && topAction.Key != "done")
+                // Check for the same EXACT action (name+params) repeating — clicking different things is fine
+                var topFullAction = last8.GroupBy(a => a).OrderByDescending(g => g.Count()).First();
+                if (topFullAction.Count() >= 3 && !topFullAction.Key.StartsWith("wait:") && !topFullAction.Key.StartsWith("done:"))
                 {
-                    Log($"\n[Stopped: '{topAction.Key}' cycling {topAction.Count()}x in 8 steps]\n", "#FFA500");
-                    OnTaskCompleted?.Invoke(false, $"Stuck cycling on '{topAction.Key}'");
-                    break;
+                    var shortKey = topFullAction.Key.Length > 60 ? topFullAction.Key[..60] + "..." : topFullAction.Key;
+                    // Remove the stuck action from recording
+                    if (_recordingSteps != null)
+                    {
+                        var stuckKey2 = topFullAction.Key;
+                        var before2 = _recordingSteps.Count;
+                        _recordingSteps.RemoveAll(s => $"{s.Action}:{s.Input.ToString(Formatting.None)}" == stuckKey2);
+                        Log($"[Recording: removed {before2 - _recordingSteps.Count} stuck action(s)]\n", "#696969");
+                    }
+                    _allFailedActions.Add(topFullAction.Key);
+                    Log($"\n[STUCK: {shortKey} repeated {topFullAction.Count()}x after trying different methods]\n", "#FFA500");
+                    _recentActions.Clear();
+                    _currentApproach++;
+
+                    // Use same 3-phase logic: manual → docs → manual (avoid failed)
+                    string switchMsg2;
+                    if (_currentApproach == 2 && docGuide == null)
+                    {
+                        Log("[STUCK → researching documentation...]\n", "#00BFFF");
+                        OnStatusChanged?.Invoke("Stuck — researching documentation...");
+                        try { docGuide = await ResearchTaskDocumentation(instruction, state!, ct); } catch { }
+                        if (!string.IsNullOrEmpty(docGuide))
+                        {
+                            var fl = string.Join("\n", _allFailedActions.Select(a => $"  - {a}"));
+                            switchMsg2 = $"⛔ STUCK. Here is a researched guide — follow it:\n\n🚀 GUIDE:\n{docGuide}\n\n🚫 FAILED actions — do NOT retry:\n{fl}";
+                        }
+                        else
+                        {
+                            var fl = string.Join("\n", _allFailedActions.Select(a => $"  - {a}"));
+                            switchMsg2 = $"⛔ STUCK and no docs found. Try a completely different method.\n\n🚫 FAILED:\n{fl}";
+                        }
+                    }
+                    else
+                    {
+                        var fl = string.Join("\n", _allFailedActions.Select(a => $"  - {a}"));
+                        switchMsg2 = $"⛔ STUCK AGAIN. Forget any guide. Navigate HOME and figure it out yourself.\n\n🚫 NEVER retry these:\n{fl}";
+                    }
+
+                    try
+                    {
+                        await _page!.Keyboard.PressAsync("Escape");
+                        await Task.Delay(300, ct);
+                        var uri2 = new Uri(_page.Url);
+                        await _page.GotoAsync($"{uri2.Scheme}://{uri2.Host}/lightning/page/home", new() { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 15000 });
+                        await Task.Delay(1500, ct);
+                    }
+                    catch { }
+                    var resetState2 = await GetPageState(ct);
+                    messages.Add(new { role = "user", content = new object[] { new { type = "tool_result", tool_use_id = toolUseId, content = "FAILED — navigated home." } } });
+                    if (resetState2 != null)
+                        messages.Add(new { role = "user", content = new object[] { new { type = "text", text = switchMsg2 }, new { type = "image", source = new { type = "base64", media_type = "image/jpeg", data = resetState2["screenshotBase64"]!.ToString() } }, new { type = "text", text = FormatPageState(resetState2) } } });
+                    else
+                        messages.Add(new { role = "user", content = new object[] { new { type = "text", text = switchMsg2 } } });
+                    OnStepCompleted?.Invoke(step, false, _currentApproach == 2 ? "Researching docs" : "Switching approach");
+                    continue;
                 }
 
                 // Check for navigation cycling
@@ -1390,12 +2046,97 @@ public class AutomationEngine : IDisposable
                     catch { return ""; }
                 }).Where(t => !string.IsNullOrEmpty(t)).ToList();
                 var topTarget = targets.GroupBy(t => t).OrderByDescending(g => g.Count()).FirstOrDefault();
-                if (topTarget != null && topTarget.Count() >= 4)
+                if (topTarget != null && topTarget.Count() >= 3)
                 {
-                    Log($"\n[Stopped: target '{topTarget.Key}' repeated {topTarget.Count()}x]\n", "#FFA500");
-                    OnTaskCompleted?.Invoke(false, $"Stuck cycling on '{topTarget.Key}'");
-                    break;
+                    // 3+ different methods all targeting the same element — truly stuck
+                    _allFailedActions.Add($"target:{topTarget.Key}");
+                    Log($"\n[STUCK: tried 3+ methods on '{topTarget.Key}' — all failed]\n", "#FFA500");
+                    _recentActions.Clear();
+                    _currentApproach++;
+
+                    // Same 3-phase logic
+                    string switchMsg3;
+                    if (_currentApproach == 2 && docGuide == null)
+                    {
+                        Log("[STUCK → researching documentation...]\n", "#00BFFF");
+                        OnStatusChanged?.Invoke("Stuck — researching documentation...");
+                        try { docGuide = await ResearchTaskDocumentation(instruction, state!, ct); } catch { }
+                        var fl3 = string.Join("\n", _allFailedActions.Select(a => $"  - {a}"));
+                        if (!string.IsNullOrEmpty(docGuide))
+                            switchMsg3 = $"⛔ STUCK on '{topTarget.Key}' after trying multiple methods. Here is a researched guide:\n\n🚀 GUIDE:\n{docGuide}\n\n🚫 FAILED:\n{fl3}";
+                        else
+                            switchMsg3 = $"⛔ STUCK on '{topTarget.Key}', no docs found. Try completely different approach.\n\n🚫 FAILED:\n{fl3}";
+                    }
+                    else
+                    {
+                        var fl3 = string.Join("\n", _allFailedActions.Select(a => $"  - {a}"));
+                        switchMsg3 = $"⛔ STUCK on '{topTarget.Key}'. Navigate HOME, try different approach.\n\n🚫 FAILED:\n{fl3}";
+                    }
+
+                    try
+                    {
+                        await _page!.Keyboard.PressAsync("Escape");
+                        await Task.Delay(300, ct);
+                        var uri3 = new Uri(_page.Url);
+                        await _page.GotoAsync($"{uri3.Scheme}://{uri3.Host}/lightning/page/home", new() { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 15000 });
+                        await Task.Delay(1500, ct);
+                    }
+                    catch { }
+                    var resetState3 = await GetPageState(ct);
+                    messages.Add(new { role = "user", content = new object[] { new { type = "tool_result", tool_use_id = toolUseId, content = $"FAILED on '{topTarget.Key}' — navigated home." } } });
+                    if (resetState3 != null)
+                        messages.Add(new { role = "user", content = new object[] { new { type = "text", text = switchMsg3 }, new { type = "image", source = new { type = "base64", media_type = "image/jpeg", data = resetState3["screenshotBase64"]!.ToString() } }, new { type = "text", text = FormatPageState(resetState3) } } });
+                    else
+                        messages.Add(new { role = "user", content = new object[] { new { type = "text", text = switchMsg3 } } });
+                    OnStepCompleted?.Invoke(step, false, "Switching approach");
+                    continue;
                 }
+            }
+
+            if (actionName == "auth_required")
+            {
+                var service = actionInput["service"]?.ToString() ?? "the target site";
+                var authUrl = actionInput["url"]?.ToString() ?? _page?.Url ?? "";
+
+                // If auth was JUST done, don't re-trigger — tell AI to continue
+                if (_authDoneRecently)
+                {
+                    Log("[Auth already completed — skipping duplicate auth request]\n", "#696969");
+                    OnStepCompleted?.Invoke(step, true, "Already logged in — continuing");
+                    state = await GetPageState(ct);
+                    if (state == null) break;
+                    messages.Add(new
+                    {
+                        role = "user",
+                        content = new object[]
+                        {
+                            new { type = "tool_result", tool_use_id = toolUseId, content = $"You are ALREADY logged in to {service}. The login was completed moments ago. Look at the current page — you should now be on the app dashboard or home page. Continue with the original task." },
+                            new { type = "image", source = new { type = "base64", media_type = "image/jpeg", data = state["screenshotBase64"]!.ToString() } },
+                            new { type = "text", text = FormatPageState(state) },
+                        }
+                    });
+                    continue;
+                }
+
+                OnStepCompleted?.Invoke(step, true, $"Authentication required for {service}");
+                await HandleAuthRequiredAsync(service, authUrl, ct);
+
+                // After auth, get fresh page state and continue
+                state = await GetPageState(ct);
+                if (state == null) break;
+
+                messages.Add(new
+                {
+                    role = "user",
+                    content = new object[]
+                    {
+                        new { type = "tool_result", tool_use_id = toolUseId, content = $"User has logged in to {service}. Continue with the task." },
+                        new { type = "text", text = $"TASK REMINDER: {taskText}\n\nPage state after login:" },
+                        new { type = "image", source = new { type = "base64", media_type = "image/jpeg", data = state["screenshotBase64"]!.ToString() } },
+                        new { type = "text", text = FormatPageState(state) },
+                    }
+                });
+                continue;
             }
 
             if (actionName == "done")
@@ -1403,10 +2144,23 @@ public class AutomationEngine : IDisposable
                 var success = actionInput["success"]?.ToObject<bool>() ?? false;
                 var message = actionInput["message"]?.ToString() ?? "";
 
-                // Verification: when AI claims success, take a screenshot and extract page text to verify
+                // Verification: when AI claims success, refresh page and take screenshot to verify
                 if (success && step >= 2)
                 {
-                    Log("[Verifying...]\n", "#696969");
+                    Log("[Verifying — refreshing page...]\n", "#696969");
+                    try
+                    {
+                        await _page!.ReloadAsync(new Microsoft.Playwright.PageReloadOptions
+                        {
+                            WaitUntil = Microsoft.Playwright.WaitUntilState.NetworkIdle,
+                            Timeout = 8000
+                        });
+                        await Task.Delay(1500, ct); // let dynamic content settle
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"[Refresh warning: {ex.Message}]\n", "#696969");
+                    }
                     var verifyState = await GetPageState(ct);
                     if (verifyState != null)
                     {
@@ -1470,6 +2224,7 @@ public class AutomationEngine : IDisposable
                     }
                 }
 
+                _taskSucceeded = success;
                 Log($"\nTask {(success ? "completed" : "did not complete")}: {message}\n",
                     success ? "#32CD32" : "#FFA07A");
                 OnTaskCompleted?.Invoke(success, message);
@@ -1482,8 +2237,10 @@ public class AutomationEngine : IDisposable
                         var cleanedSteps = CleanRecordedSteps(_recordingSteps);
                         Log($"[HYBRID] Cleaned {_recordingSteps.Count} steps → {cleanedSteps.Count} (removed retries/backtracking)\n", "#696969");
                         var genericPlan = await CreateGenericPlan(instruction, cleanedSteps, ct);
-                        SavePlan(genericPlan);
-                        Log($"[HYBRID] Strategy saved: \"{genericPlan.Description}\" ({genericPlan.Steps.Count} steps)\n", "#FFC832");
+                        // Overwrite old plan if this was a Sonnet retry after Flash failure
+                        var overwritePath = cachedPlan?.FilePath;
+                        SavePlan(genericPlan, overwritePath);
+                        Log($"[HYBRID] Strategy {(overwritePath != null ? "OVERWRITTEN" : "saved")}: \"{genericPlan.Description}\" ({genericPlan.Steps.Count} steps)\n", "#FFC832");
                     }
                     catch (Exception ex)
                     {
@@ -1572,8 +2329,26 @@ public class AutomationEngine : IDisposable
             state = await GetPageState(ct);
             if (state == null)
             {
-                Log("[Could not get page state]\n", "#FFA500");
-                break;
+                // Page context may have been destroyed (e.g., cross-origin navigation).
+                // Try to reconnect to Chrome and get a fresh page.
+                Log("[Page state lost — reconnecting...]\n", "#696969");
+                try
+                {
+                    DisconnectPlaywright();
+                    await Task.Delay(2000, ct);
+                    if (await ConnectPlaywright(port))
+                    {
+                        state = await GetPageState(ct);
+                    }
+                }
+                catch { }
+
+                if (state == null)
+                {
+                    Log("[Could not recover page state]\n", "#FFA500");
+                    break;
+                }
+                Log("[Reconnected successfully]\n", "#32CD32");
             }
 
             var currentUrl = state["url"]?.ToString() ?? "";
@@ -1582,6 +2357,64 @@ public class AutomationEngine : IDisposable
             else
                 _samePageCount = 0;
             _lastPageUrl = currentUrl;
+
+            // In-loop login detection: if the page after an action looks like a login page, trigger auth
+            // Skip if auth was just completed (to avoid re-triggering on redirect pages)
+            if (!_authDoneRecently && !string.IsNullOrWhiteSpace(_settings.ClaudeApiKey) && state["screenshotBase64"] != null)
+            {
+                try
+                {
+                    // Only check if URL looks like it could be a login page (to avoid expensive AI call every step)
+                    var urlLower = currentUrl.ToLower();
+                    if (urlLower.Contains("login") || urlLower.Contains("signin") || urlLower.Contains("sign-in") ||
+                        urlLower.Contains("auth") || urlLower.Contains("sso") || urlLower.Contains("accounts.google"))
+                    {
+                        var midLoopCheck = await AskAIWithScreenshot(
+                            "Is this a login page, sign-in page, or authentication page requiring credentials? Reply ONLY 'LOGIN_PAGE' or 'NOT_LOGIN'.",
+                            state["screenshotBase64"]!.ToString(), ct);
+
+                        if (midLoopCheck.Contains("LOGIN_PAGE", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Log("[Login page detected mid-task — starting auth flow]\n", "#FFA500");
+                            OnStepCompleted?.Invoke(step, true, "Login required — opening browser");
+                            await HandleAuthRequiredAsync("the target site", currentUrl, ct);
+
+                            // After auth, switch from Flash to Sonnet if we were replaying a cached plan
+                            if (_hybridModelOverride == "gemini-2.5-flash")
+                            {
+                                Log("[Switching from Flash to Sonnet (post-login fresh start)]\n", "#FFC832");
+                                _hybridModelOverride = "claude-sonnet-4-6";
+                            }
+
+                            state = await GetPageState(ct);
+                            if (state == null) break;
+
+                            // Replace the last message with fresh post-login state
+                            messages.Add(new
+                            {
+                                role = "user",
+                                content = new object[]
+                                {
+                                    new { type = "tool_result", tool_use_id = toolUseId, content = "User has logged in. Continue with the original task." },
+                                    new { type = "text", text = $"TASK REMINDER: {taskText}\n\nPage state after login:" },
+                                    new { type = "image", source = new { type = "base64", media_type = "image/jpeg", data = state["screenshotBase64"]!.ToString() } },
+                                    new { type = "text", text = FormatPageState(state) },
+                                }
+                            });
+                            continue;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogToFile($"[Mid-loop auth check error: {ex.Message}]\n");
+                }
+            }
+            else if (_authDoneRecently)
+            {
+                // Reset after one step so future login pages are still caught
+                _authDoneRecently = false;
+            }
 
             var stuckWarning = "";
             if (_samePageCount >= 5)
@@ -1602,6 +2435,183 @@ public class AutomationEngine : IDisposable
             });
 
             TrimOldHistory(messages, 2);
+        }
+
+        // ===== FLASH FALLBACK: If Flash failed, retry with Sonnet and rewrite the plan =====
+        if (!_taskSucceeded && cachedPlan != null && _hybridModelOverride == "gemini-2.5-flash")
+        {
+            Log("\n[HYBRID] Flash failed — falling back to Sonnet with improved strategy...\n", "#FFC832");
+
+            // Build context about what Flash got wrong so Sonnet can do better
+            var oldPlanSummary = string.Join("\n", cachedPlan.Steps.Select((s, i) => $"  {i + 1}. {s}"));
+
+            _hybridModelOverride = "claude-sonnet-4-6";
+            _recordingSteps = new List<RecordedStep>();
+            _lastActionKey = "";
+            _repeatCount = 0;
+            _consecutiveFailCount = 0;
+            _lastPageUrl = "";
+            _samePageCount = 0;
+            _recentFailedActions.Clear();
+            _recentActions.Clear();
+            _taskSucceeded = false;
+
+            // Get fresh page state
+            state = await GetPageState(ct);
+            if (state == null)
+            {
+                // Try reconnect
+                DisconnectPlaywright();
+                await Task.Delay(2000, ct);
+                await ConnectPlaywright(port);
+                state = await GetPageState(ct);
+            }
+
+            if (state != null)
+            {
+                var sonnetTaskText = $"Task: {instruction}";
+                if (!string.IsNullOrEmpty(targetUrl))
+                    sonnetTaskText += $"\nTarget URL: {targetUrl}";
+                sonnetTaskText += $"\n\nPREVIOUS ATTEMPT FAILED using this plan:\n{oldPlanSummary}\n\nThe plan was incomplete or incorrect. You must complete ALL goals in the task. Do NOT rely on the old plan — figure out the correct steps yourself by looking at the page. Make sure every part of the task is done.";
+
+                var sonnetMessages = new List<object>
+                {
+                    new {
+                        role = "user",
+                        content = new object[]
+                        {
+                            new { type = "text", text = sonnetTaskText },
+                            new { type = "image", source = new { type = "base64", media_type = "image/jpeg", data = state["screenshotBase64"]!.ToString() } },
+                            new { type = "text", text = FormatPageState(state) },
+                        }
+                    }
+                };
+
+                Log("[HYBRID] Sonnet retry starting...\n", "#FFC832");
+                for (int step = 1; step <= maxSteps; step++)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    OnStepStarted?.Invoke(step, maxSteps, "thinking (Sonnet)");
+                    LogSection($"Sonnet Retry — Step {step}");
+
+                    OnStatusChanged?.Invoke($"Sonnet retry step {step}...");
+                    var response = await CallAIWithTools(sonnetMessages, step == maxSteps, ct);
+                    var contentBlocks = response["content"] as JArray;
+                    if (contentBlocks == null) break;
+
+                    sonnetMessages.Add(new { role = "assistant", content = contentBlocks });
+
+                    var aiReasoning = "";
+                    foreach (var block in contentBlocks)
+                    {
+                        if (block["type"]?.ToString() == "text")
+                        {
+                            var txt = block["text"]?.ToString() ?? "";
+                            Log($"AI: {txt}\n", "#B4DCFF");
+                            aiReasoning += txt + " ";
+                        }
+                    }
+
+                    var toolUse = contentBlocks.FirstOrDefault(b => b["type"]?.ToString() == "tool_use");
+                    if (toolUse == null) break;
+
+                    var actionName = toolUse["name"]!.ToString();
+                    var actionInput = toolUse["input"] as JObject ?? new JObject();
+                    var toolUseId = toolUse["id"]!.ToString();
+
+                    OnStepStarted?.Invoke(step, maxSteps, actionName);
+                    Log($"Action: {actionName} {actionInput.ToString(Formatting.None)}\n", "#B4FFB4");
+
+                    // Handle auth_required
+                    if (actionName == "auth_required")
+                    {
+                        var svc = actionInput["service"]?.ToString() ?? "the target site";
+                        var aUrl = actionInput["url"]?.ToString() ?? _page?.Url ?? "";
+                        if (_authDoneRecently)
+                        {
+                            state = await GetPageState(ct);
+                            if (state == null) break;
+                            sonnetMessages.Add(new { role = "user", content = new object[] {
+                                new { type = "tool_result", tool_use_id = toolUseId, content = $"Already logged in. Continue with the task." },
+                                new { type = "image", source = new { type = "base64", media_type = "image/jpeg", data = state["screenshotBase64"]!.ToString() } },
+                                new { type = "text", text = FormatPageState(state) },
+                            }});
+                            continue;
+                        }
+                        await HandleAuthRequiredAsync(svc, aUrl, ct);
+                        state = await GetPageState(ct);
+                        if (state == null) break;
+                        sonnetMessages.Add(new { role = "user", content = new object[] {
+                            new { type = "tool_result", tool_use_id = toolUseId, content = $"User has logged in. Continue." },
+                            new { type = "image", source = new { type = "base64", media_type = "image/jpeg", data = state["screenshotBase64"]!.ToString() } },
+                            new { type = "text", text = FormatPageState(state) },
+                        }});
+                        continue;
+                    }
+
+                    if (actionName == "done")
+                    {
+                        var success = actionInput["success"]?.ToObject<bool>() ?? false;
+                        var message = actionInput["message"]?.ToString() ?? "";
+                        _taskSucceeded = success;
+                        Log($"\nSonnet retry {(success ? "completed" : "failed")}: {message}\n", success ? "#32CD32" : "#FFA07A");
+                        OnTaskCompleted?.Invoke(success, message);
+
+                        // Save improved plan (overwrite the old one)
+                        if (success && _recordingSteps != null && _recordingSteps.Count > 0)
+                        {
+                            try
+                            {
+                                Log("[HYBRID] Rewriting strategy based on Sonnet's improved run...\n", "#FFC832");
+                                var cleanedSteps = CleanRecordedSteps(_recordingSteps);
+                                var genericPlan = await CreateGenericPlan(instruction, cleanedSteps, ct);
+                                SavePlan(genericPlan, cachedPlan.FilePath);
+                                Log($"[HYBRID] Strategy OVERWRITTEN: \"{genericPlan.Description}\" ({genericPlan.Steps.Count} steps)\n", "#FFC832");
+                            }
+                            catch (Exception ex)
+                            {
+                                Log($"[HYBRID] Failed to rewrite strategy: {ex.Message}\n", "#696969");
+                            }
+                        }
+
+                        sonnetMessages.Add(new { role = "user", content = new object[] {
+                            new { type = "tool_result", tool_use_id = toolUseId, content = "Acknowledged." }
+                        }});
+                        break;
+                    }
+
+                    // Execute action
+                    Log($"[Executing: {actionName}...]\n", "#696969");
+                    var (execOk, execMsg) = await ExecuteAction(actionName, actionInput);
+                    OnStepCompleted?.Invoke(step, execOk, execMsg);
+                    Log($"Result: {execMsg}\n", execOk ? "#FFFFFF" : "#FFA07A");
+
+                    if (execOk && _recordingSteps != null)
+                    {
+                        _recordingSteps.Add(new RecordedStep
+                        {
+                            Action = actionName,
+                            Input = (JObject)actionInput.DeepClone(),
+                            Result = execMsg,
+                            Url = _page?.Url ?? "",
+                            AiReasoning = aiReasoning.Trim(),
+                        });
+                    }
+
+                    await Task.Delay(500, ct);
+                    state = await GetPageState(ct);
+                    if (state == null) break;
+
+                    sonnetMessages.Add(new { role = "user", content = new object[] {
+                        new { type = "tool_result", tool_use_id = toolUseId, content = execOk ? execMsg : $"ERROR: {execMsg}" },
+                        new { type = "text", text = $"TASK REMINDER: {sonnetTaskText}\n\nPage state:" },
+                        new { type = "image", source = new { type = "base64", media_type = "image/jpeg", data = state["screenshotBase64"]!.ToString() } },
+                        new { type = "text", text = FormatPageState(state) },
+                    }});
+
+                    TrimOldHistory(sonnetMessages, 2);
+                }
+            }
         }
 
         _hybridModelOverride = null;
@@ -1816,7 +2826,7 @@ TARGETING ELEMENTS — TWO METHODS:
 The CLICKABLE ELEMENTS list shows elements that may be MISSING from the accessibility tree (unnamed icons, custom widgets, etc.). ALWAYS check it when you can't find something in the accessibility tree.
 
 RULES:
-1. PREFER direct navigation: use 'navigate' to go directly to URLs when possible. Construct URLs based on the app's URL patterns.
+1. **FIRST STEP — NAVIGATE TO CORRECT CONTEXT**: NEVER assume the current page is the right one. Even if the page looks related (e.g., you see a Salesforce lead page), it may be showing the WRONG record from a previous session. If the task asks you to find/update a SPECIFIC record (lead, contact, account, etc.), you MUST first SEARCH for it — do NOT just act on whatever record is currently displayed. If the current page is blank, a new tab, or unrelated, navigate to the relevant website URL. Infer the URL from the task description (e.g., task mentions Salesforce → navigate to https://login.salesforce.com). NEVER click links on the browser's new-tab page. PREFER direct navigation.
 2. Use 'click' with role+name OR 'click_selector' with CSS selectors. Check BOTH the accessibility tree AND the clickable elements list.
 3. **CRITICAL**: If 'click' fails with timeout even ONCE, do NOT retry with different role/name variations. Instead:
    - Check the CLICKABLE ELEMENTS list for matching selectors
@@ -1828,7 +2838,9 @@ RULES:
 7. Respond with ONE tool call per step. No explanation needed.
 8. Use EXACTLY the data from the user's task. NEVER make up or modify user-provided data.
 9. LOOK AT THE SCREENSHOT carefully. It is MORE reliable than the accessibility tree. Use 'click_selector' for elements visible in screenshot but not in the tree.
-10. For SEARCH: Look in the CLICKABLE ELEMENTS list for elements with 'search' in their id/class (e.g., [#sSearch], [.search-icon]). Use click_selector to click them.";
+10. For SEARCH: Look in the CLICKABLE ELEMENTS list for elements with 'search' in their id/class (e.g., [#sSearch], [.search-icon]). Use click_selector to click them.
+11. **LOGIN PAGES**: If you see a login page, sign-in form, or authentication wall, call 'auth_required' immediately. Do NOT attempt to fill in credentials — the user will log in manually.
+12. **FOLLOW THE GUIDE**: If a PLAYWRIGHT AUTOMATION GUIDE is provided with the task, you MUST follow its steps in order. Do NOT go off-script or try your own method. The guide was researched specifically for Playwright automation and knows what works.";
     }
 
     private static List<object> BuildTools()
@@ -1981,6 +2993,18 @@ RULES:
                         selector = new { type = "string", description = "CSS selector (default: 'body' for full page text)" },
                         maxLength = new { type = "integer", description = "Max characters to return (default: 2000)" },
                     },
+                }
+            },
+            new {
+                name = "auth_required",
+                description = "Call this when you see a login page, sign-in form, or authentication wall. The system will show the browser to the user so they can log in manually. Do NOT attempt to fill in credentials yourself.",
+                input_schema = new {
+                    type = "object",
+                    properties = new {
+                        service = new { type = "string", description = "Name of the service requiring login (e.g., 'Freshdesk', 'Zoho Recruit')" },
+                        url = new { type = "string", description = "URL of the login page" },
+                    },
+                    required = new[] { "service" }
                 }
             },
             new {
@@ -2379,6 +3403,7 @@ RULES:
     public void Dispose()
     {
         _cts?.Cancel();
+        _authContinueTcs?.TrySetCanceled();
         DisconnectPlaywright();
     }
 }

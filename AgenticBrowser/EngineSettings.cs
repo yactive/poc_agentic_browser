@@ -14,11 +14,30 @@ public class EngineSettings
     public bool Headless { get; set; } = true;
     public string Instruction { get; set; } = "";
 
-    private const string SettingsFile = "agentic_browser_settings.json";
+    private const string SettingsFile = "settings.json";
+
+    private static string SettingsPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "AgenticBrowser", SettingsFile);
 
     public static EngineSettings Load()
     {
-        var path = Path.Combine(AppContext.BaseDirectory, SettingsFile);
+        var path = SettingsPath;
+
+        // Migrate from old location (next to exe) if new location doesn't exist
+        if (!File.Exists(path))
+        {
+            var oldPath = Path.Combine(AppContext.BaseDirectory, "agentic_browser_settings.json");
+            if (File.Exists(oldPath))
+            {
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                    File.Copy(oldPath, path);
+                }
+                catch { }
+            }
+        }
         if (!File.Exists(path)) return new();
         try
         {
@@ -53,8 +72,9 @@ public class EngineSettings
                 ["targetUrl"] = TargetUrl,
                 ["headless"] = Headless,
             };
-            File.WriteAllText(Path.Combine(AppContext.BaseDirectory, SettingsFile),
-                json.ToString(Newtonsoft.Json.Formatting.Indented));
+            var path = SettingsPath;
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, json.ToString(Newtonsoft.Json.Formatting.Indented));
         }
         catch { }
     }
